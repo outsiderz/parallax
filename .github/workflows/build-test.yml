@@ -56,7 +56,7 @@ jobs:
       - name: Host unit tests, including asset discovery fixture
         run: |
           set -euo pipefail
-          ./tests/run.sh 2>&1 | tee "$REPORT_DIR/unit-tests.log"
+          bash ./tests/run.sh 2>&1 | tee "$REPORT_DIR/unit-tests.log"
 
       - name: Discover official SDK and combined-efi image filenames
         run: |
