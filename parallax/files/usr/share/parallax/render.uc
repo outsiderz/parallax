@@ -82,6 +82,12 @@ function getCredential(ref) {
     return credential;
 }
 
+// Fail closed if the runtime candidate directory is not root-owned/private.
+let runtime = lstat('/run/parallax');
+if (!runtime || runtime.type != 'directory' || runtime.uid != 0 ||
+    runtime.mode != 0o700)
+    fail('private runtime directory is insecure');
+
 let sections = cursor().get_all('parallax');
 if (type(sections) != 'object' || type(sections.main) != 'object' ||
     sections.main['.type'] != 'globals')

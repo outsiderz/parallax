@@ -17,6 +17,7 @@ Usage: parallax <command>
   apply --config-only   Save a validated revision (never start sing-box)
   history     List bounded revision metadata (no secrets)
   rollback REVISION    Restore validated earlier revision (config-only)
+  purge --confirm-delete-all   Stop service and delete all Parallax user data
   help        Show this help
 
 MVP-b development branch: render/validate/apply/rollback are CONFIG ONLY.
@@ -44,7 +45,7 @@ make_candidate() {
     fi
     mkdir -p /run/parallax || return 1
     chmod 0700 /run/parallax || return 1
-    [ "$(stat -c '%u:%a' /run/parallax)" = '0:700' ] || return 1
+    # Ownership and permissions are checked by render.uc using fs.lstat.
     local candidate
     candidate="$(mktemp /run/parallax/candidate.XXXXXXXX)" || return 1
 
@@ -104,7 +105,7 @@ case "${1:-help}" in
             exit 1
         }
         candidate="$(make_candidate)" || exit 1
-        /usr/share/parallax/transaction.sh diff "$candidate"
+        /usr/bin/ucode /usr/share/parallax/transaction.uc diff "$candidate"
         result=$?
         rm -f "$candidate"
         exit "$result"
@@ -124,21 +125,34 @@ case "${1:-help}" in
             echo 'sing-box check rejected generated configuration' >&2
             exit 1
         fi
-        /usr/share/parallax/transaction.sh apply "$candidate"
+        /usr/bin/ucode /usr/share/parallax/transaction.uc apply "$candidate"
         result=$?
         rm -f "$candidate"
         exit "$result"
         ;;
     history)
         [ "$#" = 1 ] || exit 2
-        /usr/share/parallax/transaction.sh history
+        /usr/bin/ucode /usr/share/parallax/transaction.uc history
         ;;
     rollback)
         [ "$#" = 2 ] || {
             echo 'Usage: parallax rollback REVISION' >&2
             exit 2
         }
-        /usr/share/parallax/transaction.sh rollback "$2"
+        /usr/bin/ucode /usr/share/parallax/transaction.uc rollback "$2"
+        ;;
+    purge)
+        [ "$#" = 2 ] && [ "$2" = '--confirm-delete-all' ] || {
+            echo 'Usage: parallax purge --confirm-delete-all' >&2
+            exit 2
+        }
+        [ "$(id -u)" = '0' ] || {
+            echo 'Parallax purge requires root' >&2
+            exit 1
+        }
+        /etc/init.d/parallax stop || exit 1
+        /etc/init.d/parallax disable || exit 1
+        /usr/bin/ucode /usr/share/parallax/transaction.uc purge --confirm-delete-all
         ;;
     help|-h|--help)
         usage
