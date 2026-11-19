@@ -14,7 +14,7 @@ define Package/parallax
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Parallax safe configuration compiler - development branch
-  DEPENDS:=+ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uloop +ucode-mod-uci +ubus +uci
+  DEPENDS:=+ucode +ucode-mod-fs +ucode-mod-digest +ucode-mod-ubus +ucode-mod-uloop +ucode-mod-uci +ubus +uci
   PKGARCH:=all
 endef
 

@@ -33,11 +33,13 @@ class MVPBContract(unittest.TestCase):
     def test_ucode_digest_busybox_dispatch(self):
         txn = (ROOT / 'parallax/files/usr/share/parallax/transaction.uc').read_text()
         smoke = (ROOT / 'scripts/ci/qemu-smoke.sh').read_text()
-        self.assertIn("popen([ '/bin/busybox', 'sha256sum', path ], 'r')", txn)
-        self.assertNotIn("popen([ 'sha256sum', path ], 'r')", txn)
+        self.assertIn("import { sha256_file } from 'digest';", txn)
+        self.assertIn("sha256_file(path)", txn)
+        self.assertNotIn("popen(", txn)
         self.assertIn('tests/ucode_digest.uc', smoke)
-        self.assertIn("system([ '/bin/busybox', 'sync' ], 10000)", txn)
+        self.assertIn("system('sync', 10000)", txn)
         self.assertIn('ucode /tmp/parallax-digest.uc', smoke)
+        self.assertIn('+ucode-mod-digest', (ROOT / 'parallax/Makefile').read_text())
 
     def test_transaction_manager_safety(self):
         source = (ROOT / 'parallax/files/usr/share/parallax/transaction.uc').read_text()

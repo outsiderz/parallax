@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Config-only revisions. Filesystem permissions and kernel flock via ucode fs.
 // No sing-box process is started; check -c is used solely for validation.
-import { lstat, mkdir, chmod, open, rename, unlink, rmdir, lsdir, glob, popen, readfile } from 'fs';
+import { lstat, mkdir, chmod, open, rename, unlink, rmdir, lsdir, glob, readfile } from 'fs';
+import { sha256_file } from 'digest';
 
 const STORE = '/etc/parallax/generated';
 const ROOT = '/etc/parallax';
@@ -27,18 +28,14 @@ function regular(path) {
     check(path, 'file', 0o600);
 }
 function digest(path) {
-    let p = popen([ '/bin/busybox', 'sha256sum', path ], 'r');
-    if (!p)
+    regular(path);
+    let value = sha256_file(path);
+    if (type(value) != 'string' ||
+        match(value, /^[0-9a-f]{64}$/) == null)
         fail('cannot compute file digest');
-
-    let line = p.read('line');
-    let code = p.close();
-    let m = type(line) == 'string' ? match(line, /^([a-f0-9]{64})  /) : null;
-    if (code != 0 || !m)
-        fail('digest computation failed');
-
-    return m[1];
+    return value;
 }
+
 function activeHash() {
     if (!lstat(ACTIVE))
         return null;
@@ -71,7 +68,7 @@ function stage(data, name) {
     return file;
 }
 function syncDisk() {
-    if (system([ '/bin/busybox', 'sync' ], 10000) != 0)
+    if (system('sync', 10000) != 0)
         fail('cannot synchronize filesystem');
 }
 function publish(data, name) {
