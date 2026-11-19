@@ -30,6 +30,14 @@ class MVPBContract(unittest.TestCase):
         self.assertIn('sing-box check -c "$candidate" >/dev/null 2>&1', source)
         self.assertIn('rm -f "$candidate"', source)
 
+    def test_ucode_digest_busybox_dispatch(self):
+        txn = (ROOT / 'parallax/files/usr/share/parallax/transaction.uc').read_text()
+        smoke = (ROOT / 'scripts/ci/qemu-smoke.sh').read_text()
+        self.assertIn("popen([ '/bin/busybox', 'sha256sum', path ], 'r')", txn)
+        self.assertNotIn("popen([ 'sha256sum', path ], 'r')", txn)
+        self.assertIn('tests/ucode_digest.uc', smoke)
+        self.assertIn('ucode /tmp/parallax-digest.uc', smoke)
+
     def test_transaction_manager_safety(self):
         source = (ROOT / 'parallax/files/usr/share/parallax/transaction.uc').read_text()
         for token in ["lock('xn')", "lstat(path)", "open(file, 'wx', 0o600)",

@@ -120,6 +120,9 @@ done
 for f in "$PACKAGES"/*.apk; do send "$f" /tmp/; done
 guest 'apk add --allow-untrusted /tmp/parallax-*.apk /tmp/luci-app-parallax-*.apk /tmp/luci-i18n-parallax-ru-*.apk' | tee "$REPORT/install.log"
 guest 'parallax check' | tee "$REPORT/check.log"
+# Verify the SHA256 applet is accessible to ucode fs.popen without shell applet fallback.
+send "$GITHUB_WORKSPACE/tests/ucode_digest.uc" /tmp/parallax-digest.uc
+guest 'ucode /tmp/parallax-digest.uc' | tee "$REPORT/ucode-digest.log"
 guest 'uci set parallax.main.enabled=1; uci commit parallax; /etc/init.d/parallax enable; /etc/init.d/parallax restart' | tee "$REPORT/start.log"
 READY=0
 for n in $(seq 1 30); do

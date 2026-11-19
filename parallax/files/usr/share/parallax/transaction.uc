@@ -27,7 +27,7 @@ function regular(path) {
     check(path, 'file', 0o600);
 }
 function digest(path) {
-    let p = popen([ 'sha256sum', path ], 'r');
+    let p = popen([ '/bin/busybox', 'sha256sum', path ], 'r');
     if (!p)
         fail('cannot compute file digest');
 
