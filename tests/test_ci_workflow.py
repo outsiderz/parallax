@@ -65,6 +65,8 @@ class CIChecks(unittest.TestCase):
         self.assertTrue(recovery.is_file())
         self.assertEqual(subprocess.run(["sh", "-n", str(recovery)]).returncode, 0)
         recovery_source = recovery.read_text()
+        self.assertIn("sleep 1", recovery_source)
+        self.assertNotIn("sleep 0.", recovery_source)
         for contract in ["crash_at_sync 1", "crash_at_sync 2",
                          "lock-contention", "history limited to 10",
                          "parallax rollback", "sing-box check -c"]:

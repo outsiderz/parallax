@@ -11,4 +11,4 @@ if (!ready || ready.write('locked\n') != 7 || !ready.flush() || !ready.close())
     die('LOCK_HOLDER: cannot signal readiness\n');
 
 // Keep the lock handle open until the caller terminates this process.
-system('sleep 12', 16000);
+system('sleep 20', 30000);

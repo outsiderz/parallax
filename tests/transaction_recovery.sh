@@ -47,10 +47,10 @@ echo 'CHECK: competing apply is rejected while transaction lock is held'
 ucode /tmp/parallax-ci-lock-holder.uc >"$tmp/lock-holder.log" 2>&1 &
 lock_pid=$!
 ready=0
-for i in $(seq 1 50); do
+for i in $(seq 1 10); do
   if [ -f /tmp/parallax-ci-lock-ready ]; then ready=1; break; fi
   if ! kill -0 "$lock_pid" 2>/dev/null; then break; fi
-  sleep 0.1
+  sleep 1
 done
 [ "$ready" -eq 1 ] || {
   echo 'FAIL: test holder never acquired transaction lock'
