@@ -204,11 +204,19 @@ function purge() {
     if (lstat(ROOT)) {
         check(ROOT, 'directory', 0o700);
         for (let filename in lsdir(ROOT) ?? []) {
-            if (filename != 'generated' && filename != 'credentials')
+            if (filename != 'generated' && filename != 'credentials' &&
+                filename != '.reinstall-stopped')
                 fail('unrecognized private data prevents automatic purge');
         }
+        // A one-shot reinstall guard can remain after interrupted postinst.
+        // Only delete a root-owned 0600 regular file. Fail closed before
+        // touching credentials/revisions on links or insecure modes.
+        let marker = ROOT + '/.reinstall-stopped';
+        if (lstat(marker))
+            regular(marker);
         // Current lock handle remains open while its directory is removed.
         // The exclusive file handle is released when the process exits.
+        deleteTree(marker);
         deleteTree(ROOT + '/credentials');
         deleteTree(ROOT + '/generated');
         if (!rmdir(ROOT))
