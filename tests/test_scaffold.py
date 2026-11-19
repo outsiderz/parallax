@@ -50,6 +50,8 @@ class ScaffoldTests(unittest.TestCase):
         out=subprocess.run(["sh",str(path),"version"],capture_output=True,text=True)
         self.assertEqual(out.returncode,0)
         self.assertIn("0.2.0",out.stdout)
+        core=(ROOT/"parallax/Makefile").read_text()
+        luci=(ROOT/"luci-app-parallax/Makefile").read_text()
         self.assertIn("PKG_VERSION:=0.2.0", core)
         self.assertIn("PKG_VERSION:=0.2.0", luci)
         self.assertEqual((ROOT/"parallax/files/usr/share/parallax/version").read_text().strip(), "0.2.0")
