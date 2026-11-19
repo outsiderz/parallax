@@ -24,6 +24,12 @@ This file defines *planned* checks, not evidence that they have passed.
   remove packages; capture sanitized metadata only.
 - Compare pre/post: /etc/config outside Parallax, nftables normalized rules,
   ip rule, IPv4/IPv6 routes, DNS config, open sockets and process list.
+- Verify authenticated LuCI cookie SID -> HTTP rpcd JSON-RPC status/ping returns data,
+  while anonymous SID is denied (not just an HTTP 200 page or static ACL JSON).
+- Verify standard apk del retains modified /etc/config/parallax, credentials and
+  revisions; then reinstall and explicit purge removes all three.
+- Verify neither coreutils-stat nor flock is required; use ucode fs.lstat and
+  fs.file.lock with a real QEMU runtime test.
 - Verify other VPN services remain untouched and sing-box is never launched
   as a daemon by the apply coordinator.
 

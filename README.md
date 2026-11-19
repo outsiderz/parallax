@@ -29,6 +29,7 @@ parallax diff                   # hashes only
 parallax apply --config-only    # config file only; never launches sing-box
 parallax history                # revisions and SHA256; no secrets
 parallax rollback REVISION      # validates stored config before atomic restore
+parallax purge --confirm-delete-all  # DESTRUCTIVE: stop daemon, delete all user data
 ```
 
 Only root may perform the operations. JSON candidates contain credentials and
@@ -36,11 +37,22 @@ must **never be pasted into logs, GitHub issues or public chat**. UCI profiles u
 a `credential_ref`, and the corresponding root-owned JSON secret belongs at
 `/etc/parallax/credentials/<ref>.json` (directory 0700, file 0600).
 The `generated` store at `/etc/parallax/generated` is also private (0700).
+File ownership/permissions and exclusive locks use native ucode fs.lstat/fs.file.lock;
+no external flock/coreutils-stat runtime dependency.
 All status/diff/history output omits JSON content.
 
 Schema 2 defaults to a direct-only, no-inbound configuration. Supported
 optional outbound: VLESS/Reality. Supported rule selectors: domain,
 domain_suffix and IPv4 ip_cidr. No AmneziaWG support is implied.
+
+## Package uninstall and purge
+
+Normal `apk del` preserves modified `/etc/config/parallax` (possibly
+`enabled=1`) plus unowned credential and revision directories. **Purge
+is a separate irreversible, explicitly confirmed action** that stops and
+disables the status daemon, removes `/etc/config/parallax` and the entire
+private `/etc/parallax` tree. Run purge **before** `apk del`.
+See [removal & purge policy](docs/OPERATIONS.md) and the QEMU regression tests.
 
 ## Tests and provenance
 

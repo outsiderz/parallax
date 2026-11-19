@@ -45,6 +45,14 @@ class CIChecks(unittest.TestCase):
         for token in ["ucode /tmp/ucode_runtime.uc", "ubus call parallax status",
                       "ubus list parallax", "kill -9", "apk del"]:
             self.assertIn(token, smoke)
+        for token in ["rpcd_acl.sh", "remove-preservation.log", "purge.log",
+                      "ucode_permissions.uc", "parallax purge --confirm-delete-all"]:
+            self.assertIn(token, smoke)
+        acl = (ROOT/"tests/rpcd_acl.sh").read_text()
+        self.assertIn('http://127.0.0.1/ubus', acl)
+        self.assertIn('sysauth_http', acl)
+        self.assertIn('00000000000000000000000000000000', acl)
+        self.assertEqual(subprocess.run(["sh", "-n", str(ROOT/"tests/rpcd_acl.sh")]).returncode, 0)
         code = (ROOT/"tests/ucode_runtime.uc").read_text()
         self.assertIn("conn.call('parallax', 'ping'", code)
 

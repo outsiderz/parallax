@@ -1,6 +1,6 @@
 # Parallax MVP (б) — configuration engine contract
 
-Status: approved architecture, implementation in progress. Base: successful MVP (а),
+Status: approved architecture, implementation in progress; reviewed removal policy in docs/OPERATIONS.md. Base: successful MVP (а),
 GitHub Actions #14 on OpenWrt 25.12.6 x86_64 (apk, LuCI, procd, ubus, QEMU/KVM).
 
 ## Scope and safety boundary
@@ -83,6 +83,12 @@ Implementation target:
 /etc/parallax/credentials/      mode 0700  secret source files (never snapshotted)
 /etc/parallax/generated/        mode 0700  active.json and revision history
 ```
+
+The apply coordinator uses native ucode fs.file.lock('xn') and fs.lstat for
+file ownership/mode checks, with no standalone flock or coreutils-stat APK.
+Normal apk del preserves conffiles and user-owned private data, while an
+explicit `parallax purge --confirm-delete-all` (before uninstall) deletes
+Parallax UCI, credentials and revision store after service stop/disable.
 
 The apply coordinator must hold an exclusive lock, write in the same
 filesystem, use `0600` file modes, flush and atomically rename verified
