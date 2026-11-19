@@ -18,9 +18,15 @@ secure_file() {
 }
 setup() {
     [ ! -L /etc/parallax ] && [ ! -L "$STORE" ] || fail 'unsafe path'
-    if [ ! -e /etc/parallax ]; then install -d -m 0700 /etc/parallax; fi
+    if [ ! -e /etc/parallax ]; then
+        mkdir /etc/parallax || fail 'cannot create store parent'
+        chmod 0700 /etc/parallax
+    fi
     secure_dir /etc/parallax
-    if [ ! -e "$STORE" ]; then install -d -m 0700 "$STORE"; fi
+    if [ ! -e "$STORE" ]; then
+        mkdir "$STORE" || fail 'cannot create store directory'
+        chmod 0700 "$STORE"
+    fi
     secure_dir "$STORE"
 }
 lock_store() {

@@ -49,7 +49,7 @@ class ScaffoldTests(unittest.TestCase):
         path=ROOT/"parallax/files/usr/bin/parallax"
         out=subprocess.run(["sh",str(path),"version"],capture_output=True,text=True)
         self.assertEqual(out.returncode,0)
-        self.assertIn("0.1.0",out.stdout)
+        self.assertIn("0.2.0",out.stdout)
 
 if __name__ == "__main__":
     unittest.main()
