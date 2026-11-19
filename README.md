@@ -1,82 +1,69 @@
-# Parallax — MVP (а) / OpenWrt 25.12+ x86/64
+# Parallax — MVP (б), OpenWrt 25.12+ x86/64
 
-**Version:** `0.1.0` (source scaffold). **Status:** implementation of milestone MVP (a), not a routing engine.
+**Version:** 0.2.0 (development branch `feature/mvp-b`).
+**Status:** configuration-only MVP, draft PR #1. No production network activation.
 
-A safe, installable OpenWrt package scaffold with a real event-driven ucode daemon,
-UCI settings, procd lifecycle, a read-only ubus API, a read-only CLI, and a tiny LuCI
-JS view. The Russian LuCI language package is generated from `po/ru/parallax.po`
-by the standard OpenWrt `luci.mk` mechanism.
+Parallax compiles a deterministic sing-box JSON configuration from a strict
+version 2 UCI schema, checks it using the installed sing-box binary and supports
+atomic config-only revisions, hash-only diffs and validated rollback.
 
-> **Safety boundary:** this milestone never executes sing-box, touches nftables,
-> changes IP rules/routes, alters DNS, or modifies existing Podkop/Forkop/Tachyon
-> services. `/etc/config/parallax` ships with `enabled=0`.
+**Safety boundary:** no sing-box daemon is started, no DNS changes are made,
+and fw4/nftables, IP routes/rules, existing VPN services (including Forkop)
+and other network settings are never modified by the renderer or transaction
+manager. The default UCI option `enabled=0` is retained.
 
-## Layout
+## Packages
 
-- `parallax/` — OpenWrt feed package: UCI, CLI, ucode daemon, procd init.
-- `luci-app-parallax/` — LuCI JS view, menu, read-only rpcd ACL, Russian PO.
-- `tests/` — host-side static and mock lifecycle tests.
-- `docs/BUILD.md` — SDK and package build instructions.
-- `docs/TESTING.md` — installation, runtime and network-invariance checks.
-- `docs/ARCHITECTURE_MVP_A.md` — exact implemented scope and future contracts.
+- `parallax` — ucode renderer, CLI, status daemon, locked revision manager.
+- `luci-app-parallax` — read-only LuCI status page.
+- `luci-i18n-parallax-ru` — Russian interface translation.
 
-## Quick host tests
-
-```sh
-./tests/run.sh
-```
-
-Requires Python 3 and `sh`; Node.js is used for JS syntax checking when available.
-These tests **do not** substitute for compiling the `.apk` in the matching OpenWrt
-25.12 SDK or a live `ubus` smoke test in QEMU.
-
-## Runtime commands (on an OpenWrt test machine, after building/installing)
+## Commands on disposable OpenWrt/QEMU
 
 ```sh
 parallax version
 parallax check
-uci show parallax
-/etc/init.d/parallax status
-
-# Opt in only to the status daemon (no routing):
-uci set parallax.main.enabled='1'
-uci commit parallax
-/etc/init.d/parallax enable
-/etc/init.d/parallax restart
-parallax status
-ubus call parallax status '{}'
-ubus call parallax ping '{}'
-
-# Return to disabled status (no network state to restore):
-uci set parallax.main.enabled='0'
-uci commit parallax
-/etc/init.d/parallax stop
-/etc/init.d/parallax disable
+parallax render                 # private file in /run/parallax (sensitive)
+parallax validate               # requires real sing-box check -c
+parallax diff                   # hashes only
+parallax apply --config-only    # config file only; never launches sing-box
+parallax history                # revisions and SHA256; no secrets
+parallax rollback REVISION      # validates stored config before atomic restore
 ```
 
-Open LuCI **Services → Parallax** to view the state. The view cannot perform writes.
+Only root may perform the operations. JSON candidates contain credentials and
+must **never be pasted into logs, GitHub issues or public chat**. UCI profiles use
+a `credential_ref`, and the corresponding root-owned JSON secret belongs at
+`/etc/parallax/credentials/<ref>.json` (directory 0700, file 0600).
+The `generated` store at `/etc/parallax/generated` is also private (0700).
+All status/diff/history output omits JSON content.
 
-## Known limitations
+Schema 2 defaults to a direct-only, no-inbound configuration. Supported
+optional outbound: VLESS/Reality. Supported rule selectors: domain,
+domain_suffix and IPv4 ip_cidr. No AmneziaWG support is implied.
 
-- Sing-box configuration, TProxy, DNS, snapshots, metrics, real VPNs, Telegram,
-  install/uninstall and hosted GitHub Actions are subsequent milestones.
-- SDK compilation, `.apk` signing and OpenWrt/QEMU live tests have **not** been
-  executed by the host-side test suite.
-- UCI `enabled` controls registration of a **status-only** process; it does not
-  enable traffic routing.
-- LuCI depends on the official LuCI feed (`feeds/luci/luci.mk`) at build time.
-- The runtime guard rejects OpenWrt earlier than 25.12 and non-x86_64 builds.
+## Tests and provenance
 
-## License
+Run host checks with `bash ./tests/run.sh`. Real acceptance requires all
+three APKs to build using the pinned OpenWrt 25.12.6 x86/64 SDK, and then
+a real QEMU/KVM OpenWrt guest, sing-box check, Lua-free ucode runtime checks,
+permission/credential tests, apply/rollback and network invariance tests.
 
-MIT. See `LICENSE`.
+Last observed passing **MVP (б) code** build:
+[GitHub Actions #20](https://github.com/outsiderz/parallax/actions/runs/44507902751),
+commit `8339af5c0c3905d9c863b32b4e417ceefd1f9db6`. Subsequent commits must
+pass CI independently before acceptance or merge.
 
+See [MVP (б) architecture](docs/ARCHITECTURE_MVP_B.md),
+[release gate](docs/MVP_B_TEST_PLAN.md) and
+[CI instructions](docs/CI.md).
 
-## CI: SDK + QEMU KVM (следующий контрольный рубеж)
+## Status and next stage
 
-Добавлен workflow [`.github/workflows/build-test.yml`](.github/workflows/build-test.yml).
-Он собирает APK официальным SDK 25.12 x86/64, затем **на GitHub Actions**
-запускает настоящий OpenWrt combined-efi в QEMU/KVM, устанавливает пакеты,
-проверяет ubus/procd/LuCI и сохраняет логи/диффы. См. [`docs/CI.md`](docs/CI.md).
-**В этом исходном комплекте нет утверждения о выполненном CI-run; APK-артефакты
-появятся только после его успешного запуска в GitHub.**
+The branch is developed in
+[draft PR #1](https://github.com/outsiderz/parallax/pull/1).
+**Do not deploy to an active router or merge before reviewing the final CI.**
+MVP (в) will separately own sing-box lifecycle, network interception and safe
+native-internet fallback.
+
+MIT license; see [LICENSE](LICENSE).

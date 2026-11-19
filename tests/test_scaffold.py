@@ -50,6 +50,12 @@ class ScaffoldTests(unittest.TestCase):
         out=subprocess.run(["sh",str(path),"version"],capture_output=True,text=True)
         self.assertEqual(out.returncode,0)
         self.assertIn("0.2.0",out.stdout)
+        self.assertIn("PKG_VERSION:=0.2.0", core)
+        self.assertIn("PKG_VERSION:=0.2.0", luci)
+        self.assertEqual((ROOT/"parallax/files/usr/share/parallax/version").read_text().strip(), "0.2.0")
+        daemon=(ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()
+        self.assertIn("const VERSION = '0.2.0';", daemon)
+        self.assertIn("phase: 'mvp-b'", daemon)
 
 if __name__ == "__main__":
     unittest.main()

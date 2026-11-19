@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=parallax
-PKG_VERSION:=0.1.0
+PKG_VERSION:=0.2.0
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
@@ -19,8 +19,8 @@ define Package/parallax
 endef
 
 define Package/parallax/description
- OpenWrt 25.12+ Parallax scaffold. Read-only ubus status and CLI,
- UCI configuration and procd lifecycle. Does not touch network routing.
+ OpenWrt 25.12+ Parallax config-only generator with validated
+ sing-box JSON revisions, history and rollback. No network routing changes.
 endef
 
 define Package/parallax/conffiles

@@ -22,14 +22,14 @@ msgstr "Этап: "
 msgid "Heartbeat: "
 msgstr "Циклы heartbeat: "
 
-msgid "Routing: disabled in MVP-a"
-msgstr "Маршрутизация: отключена на этапе MVP (а)"
+msgid "Routing: disabled in MVP-b"
+msgstr "Маршрутизация: отключена на этапе MVP (б)"
 
-msgid "Proxy: not started in MVP-a"
-msgstr "Прокси: не запущен на этапе MVP (а)"
+msgid "Proxy: not started in MVP-b"
+msgstr "Прокси: не запущен на этапе MVP (б)"
 
-msgid "MVP-a is a read-only scaffold. No routing, DNS or firewall changes are made."
-msgstr "MVP (а) — каркас только для просмотра. Маршрутизация, DNS и firewall не изменяются."
+msgid "MVP-b is a read-only scaffold. No routing, DNS or firewall changes are made."
+msgstr "MVP (б) — каркас только для просмотра. Маршрутизация, DNS и firewall не изменяются."
 
 msgid "Enable the status service from SSH after validating the platform and configuration."
 msgstr "После проверки платформы и конфигурации включите статусный сервис через SSH."
