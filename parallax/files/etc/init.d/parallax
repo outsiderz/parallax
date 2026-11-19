@@ -16,7 +16,13 @@ start_service() {
     config_load parallax
     config_get enabled main enabled 0
 
-    # Even after the service is enabled, MVP-a never modifies nftables,
+    # apk del preserves a customized enabled=1 UCI conffile. The protected
+    # marker is created by the package's prerm and prevents default_postinst
+    # from starting this status daemon during reinstall. postinst then clears
+    # it after disabling package-created rc.d links.
+    [ ! -f /etc/parallax/.reinstall-stopped ] || return 0
+
+    # Even after the service is enabled, MVP-b never modifies nftables,
     # ip rule, DNS, routing tables, or the running proxy engine.
     [ "$enabled" = '1' ] || return 0
 

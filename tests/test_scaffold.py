@@ -18,6 +18,10 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("feeds/luci/luci.mk",luci)
         # include/scan.mk discovers LuCI recipes via the exact marker.
         self.assertIn("call BuildPackage",luci)
+        self.assertIn("define Package/parallax/prerm", core)
+        self.assertIn("define Package/parallax/postinst", core)
+        self.assertIn(".reinstall-stopped", core)
+        self.assertIn("PKG_RELEASE:=2", core)
 
     def test_shell_syntax(self):
         for file in ["parallax/files/etc/init.d/parallax",
@@ -32,6 +36,9 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("option schema_version '2'",text)
         self.assertIn("option apply_mode 'config_only'",text)
         self.assertIn("option mode 'selective'",text)
+        init=(ROOT/"parallax/files/etc/init.d/parallax").read_text()
+        self.assertIn("[ ! -f /etc/parallax/.reinstall-stopped ] || return 0", init)
+
 
     def test_daemon_read_only(self):
         code=(ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()

@@ -335,12 +335,33 @@ for path in /etc/config/parallax /etc/parallax /etc/parallax/generated /etc/para
 done
 echo "Revisions retained:"
 find /etc/parallax/generated -maxdepth 1 -name "rev-*.json" -type f | wc -l
+test -f /etc/parallax/.reinstall-stopped
+echo "REINSTALL GUARD: protected marker present after apk del"
 echo "PASS: apk del retains edited conffile, credentials directory and revision store"
 ' 2>&1 | tee "$REPORT/remove-preservation.log"
 # Reinstall before explicitly purging so the admin command is available.
 guest 'apk add --allow-untrusted /tmp/parallax-*.apk /tmp/luci-app-parallax-*.apk /tmp/luci-i18n-parallax-ru-*.apk' | tee "$REPORT/reinstall.log"
-# The service was disabled before removal and must not auto-run on reinstall.
-if guest 'ubus list parallax' >/dev/null 2>&1; then echo "FAIL: service automatically started after reinstall"; exit 1; fi
+# A retained enabled=1 config must never auto-launch the daemon on reinstall.
+# Confirm the package postinst restored manual-start-only policy and cleared
+# the temporary marker before checking explicit administrator re-enable.
+guest 'set -eu
+test ! -e /etc/parallax/.reinstall-stopped
+if /etc/init.d/parallax enabled >/dev/null 2>&1; then
+  echo "FAIL: init script auto-enabled after reinstall"
+  exit 1
+fi
+if ubus list parallax >/dev/null 2>&1; then
+  echo "FAIL: service automatically started after reinstall"
+  exit 1
+fi
+echo "PASS: reinstall retained enabled=1 UCI, but daemon and autostart remain disabled"
+' 2>&1 | tee "$REPORT/reinstall-stopped.log"
+guest 'set -eu
+/etc/init.d/parallax enable
+/etc/init.d/parallax start
+ubus call parallax ping "{}"
+echo "PASS: explicit administrator enable+start succeeds after reinstall"
+' 2>&1 | tee "$REPORT/reinstall-explicit-start.log"
 guest 'set -eu
 echo "COMMAND: parallax purge --confirm-delete-all"
 parallax purge --confirm-delete-all
