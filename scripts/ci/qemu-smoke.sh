@@ -97,7 +97,7 @@ for n in $(seq 1 120); do
 done
 test "$READY" = 1
 guest 'cat /etc/openwrt_release; ip -4 route; test "$(uci -q get network.lan.proto)" = dhcp' | tee "$REPORT/network.log"
-guest 'apk update; apk add luci nftables-json curl ca-bundle sing-box; /etc/init.d/uhttpd enable; /etc/init.d/uhttpd restart' | tee "$REPORT/baseline.log"
+guest 'apk update; apk add luci uhttpd-mod-ubus nftables-json curl ca-bundle sing-box; /etc/init.d/rpcd enable; /etc/init.d/rpcd restart; /etc/init.d/uhttpd enable; /etc/init.d/uhttpd restart' | tee "$REPORT/baseline.log"
 guest 'test -x "$(command -v sing-box)"; sing-box version | head -n 2' | tee "$REPORT/sing-box-version.log"
 # luci-i18n-parallax-ru post-install registers this language in UCI.
 # Establish that stock LuCI setting before the baseline snapshot so a
@@ -244,9 +244,45 @@ guest 'chmod 600 /tmp/parallax-ci-web-password'
 guest 'test -s /usr/share/luci/menu.d/luci-app-parallax.json; test -s /usr/share/rpcd/acl.d/luci-app-parallax.json; grep -q "parallax/overview" /usr/share/luci/menu.d/luci-app-parallax.json; grep -q "status" /usr/share/rpcd/acl.d/luci-app-parallax.json'
 guest 'code=$(curl -sS -c /tmp/parallax-cookie -o /tmp/parallax-auth-response -w "%{http_code}" -d "luci_username=root" --data-urlencode "luci_password@/tmp/parallax-ci-web-password" http://127.0.0.1/cgi-bin/luci/admin/services/parallax); test "$code" = 302 || { echo "FAIL: LuCI login expected 302; got $code"; exit 1; }; grep -q "sysauth_http" /tmp/parallax-cookie; rm -f /tmp/parallax-ci-web-password'
 guest 'curl -fsS -b /tmp/parallax-cookie http://127.0.0.1/cgi-bin/luci/admin/services/parallax -o /tmp/page.html; test -s /tmp/page.html; grep -Eq "luci|LuCI" /tmp/page.html; wc -c /tmp/page.html' | tee "$REPORT/luci-authenticated-page.log"
-guest 'curl -fsS http://127.0.0.1/luci-static/resources/view/parallax/overview.js | grep -q daemon_running'
+# Run the ACL check before testing the static JS so a LuCI asset failure cannot
+# leave rpcd-acl.log empty. Preserve stdout, stderr and the remote exit code.
 send "$GITHUB_WORKSPACE/tests/rpcd_acl.sh" /tmp/parallax-rpcd-acl.sh
-guest 'sh /tmp/parallax-rpcd-acl.sh' | tee "$REPORT/rpcd-acl.log"
+set +e
+guest 'sh /tmp/parallax-rpcd-acl.sh' 2>&1 | tee "$REPORT/rpcd-acl.log"
+acl_rc=${PIPESTATUS[0]}
+set -e
+if [ "$acl_rc" -ne 0 ]; then
+  echo "FAIL: rpcd ACL smoke (remote exit=$acl_rc)" | tee -a "$REPORT/rpcd-acl.log"
+  exit "$acl_rc"
+fi
+# Never use curl | grep -q with pipefail: grep may close the pipe early and
+# curl then exits 23 (SIGPIPE). Fetch fully and assert HTTP and JS separately.
+guest '
+  url="http://127.0.0.1/luci-static/resources/view/parallax/overview.js"
+  body=/tmp/parallax-ci-overview.js
+  headers=/tmp/parallax-ci-overview.headers
+  errors=/tmp/parallax-ci-overview.curl-stderr
+  if code="$(curl -sS --max-time 15 -b /tmp/parallax-cookie -D "$headers" -o "$body" -w "%{http_code}" "$url" 2>"$errors")"; then
+    curl_rc=0
+  else
+    curl_rc=$?
+  fi
+  echo "LuCI JS: curl exit=$curl_rc HTTP=$code"
+  if [ -s "$errors" ]; then cat "$errors"; fi
+  if [ "$curl_rc" -ne 0 ] || [ "$code" != 200 ] || [ ! -s "$body" ]; then
+    echo "FAIL: LuCI JS missing or HTTP failure"
+    if [ -f "$headers" ]; then sed -n "1,15p" "$headers"; fi
+    exit 1
+  fi
+  if ! grep -Fq daemon_running "$body"; then
+    echo "FAIL: LuCI JS response missing daemon_running"
+    sed -n "1,15p" "$headers"
+    head -c 200 "$body"
+    printf "\n"
+    exit 1
+  fi
+  echo "PASS: LuCI JS HTTP=$code bytes=$(wc -c < "$body") contains daemon_running"
+' 2>&1 | tee "$REPORT/luci-js.log"
 OLD="$(guest 'pidof ucode' | awk '{print $1}')"
 test -n "$OLD"
 guest "kill -9 $OLD"
@@ -273,11 +309,37 @@ for stage in after-install after-remove; do
 done
 if guest 'ubus list parallax' >/dev/null 2>&1; then echo "FAIL: ubus object remains"; exit 1; fi
 # Normal apk removal must preserve edited UCI conffile and private user data.
-guest 'test -f /etc/config/parallax; test "$(uci -q get parallax.main.enabled)" = 1; test "$(uci -q get parallax.ci_rule.match)" = domain_suffix; test -f /etc/parallax/generated/active.json; test -d /etc/parallax/credentials; echo "PASS: apk del retains conffile, credentials directory and revision store"' | tee "$REPORT/remove-preservation.log"
+guest 'set -eu
+test -f /etc/config/parallax
+test "$(uci -q get parallax.main.enabled)" = 1
+test "$(uci -q get parallax.ci_rule.match)" = domain_suffix
+test -f /etc/parallax/generated/active.json
+test -d /etc/parallax/credentials
+echo "AFTER apk del: retained user data (metadata only; no credentials/JSON printed)"
+for path in /etc/config/parallax /etc/parallax /etc/parallax/generated /etc/parallax/generated/active.json /etc/parallax/credentials; do
+  test -e "$path"
+  ls -ld "$path"
+done
+echo "Revisions retained:"
+find /etc/parallax/generated -maxdepth 1 -name "rev-*.json" -type f | wc -l
+echo "PASS: apk del retains edited conffile, credentials directory and revision store"
+' 2>&1 | tee "$REPORT/remove-preservation.log"
 # Reinstall before explicitly purging so the admin command is available.
 guest 'apk add --allow-untrusted /tmp/parallax-*.apk /tmp/luci-app-parallax-*.apk /tmp/luci-i18n-parallax-ru-*.apk' | tee "$REPORT/reinstall.log"
 # The service was disabled before removal and must not auto-run on reinstall.
 if guest 'ubus list parallax' >/dev/null 2>&1; then echo "FAIL: service automatically started after reinstall"; exit 1; fi
-guest 'parallax purge --confirm-delete-all; test ! -e /etc/config/parallax; test ! -e /etc/parallax; apk del luci-i18n-parallax-ru luci-app-parallax parallax; test ! -e /etc/config/parallax; test ! -e /etc/parallax; echo "PASS: explicit purge removes UCI and credentials/revisions"' | tee "$REPORT/purge.log"
+guest 'set -eu
+echo "COMMAND: parallax purge --confirm-delete-all"
+parallax purge --confirm-delete-all
+for path in /etc/config/parallax /etc/parallax /etc/parallax/generated /etc/parallax/credentials; do
+  test ! -e "$path" || { echo "FAIL: remains after purge: $path"; exit 1; }
+  echo "ABSENT after purge: $path"
+done
+echo "COMMAND: apk del luci-i18n-parallax-ru luci-app-parallax parallax"
+apk del luci-i18n-parallax-ru luci-app-parallax parallax
+test ! -e /etc/config/parallax
+test ! -e /etc/parallax
+echo "PASS: explicit purge removes UCI, credentials and revisions; apk del leaves nothing"
+' 2>&1 | tee "$REPORT/purge.log"
 
 echo "PASS QEMU KVM" | tee "$REPORT/PASS.txt"
