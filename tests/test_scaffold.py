@@ -12,6 +12,8 @@ class ScaffoldTests(unittest.TestCase):
         luci=(ROOT/"luci-app-parallax/Makefile").read_text()
         self.assertIn("PKG_NAME:=parallax",core)
         self.assertIn("ucode-mod-ubus",core)
+        self.assertIn("render.uc",core)
+        self.assertIn("ucode-mod-fs",core)
         self.assertIn("LUCI_DEPENDS:=+luci-base +parallax",luci)
         self.assertIn("feeds/luci/luci.mk",luci)
         # include/scan.mk discovers LuCI recipes via the exact marker.
@@ -27,6 +29,8 @@ class ScaffoldTests(unittest.TestCase):
     def test_safe_uci(self):
         text=(ROOT/"parallax/files/etc/config/parallax").read_text()
         self.assertIn("option enabled '0'",text)
+        self.assertIn("option schema_version '2'",text)
+        self.assertIn("option apply_mode 'config_only'",text)
         self.assertIn("option mode 'selective'",text)
 
     def test_daemon_read_only(self):

@@ -11,13 +11,39 @@ Usage: parallax <command>
   check       Validate platform and MVP-a UCI settings (read-only)
   status      Read the live read-only ubus status
   ping        Ping the ubus daemon
+  render      Generate private candidate JSON in /run/parallax (no proxy start)
+  validate    Generate candidate and run sing-box check (no proxy start)
   help        Show this help
 
-MVP-a does NOT implement routing, sing-box, VPN or DNS actions.
+MVP-b development branch: render/validate only; NO routing, VPN or DNS changes.
 To enable the status daemon: uci set parallax.main.enabled=1;
                               uci commit parallax;
                               /etc/init.d/parallax restart
 USAGE
+}
+
+
+make_candidate() {
+    if [ "$(id -u)" != '0' ]; then
+        echo 'Parallax render requires root for protected credential access' >&2
+        return 1
+    fi
+    . /usr/share/parallax/platform.sh
+    parallax_check_platform || return 1
+    parallax_check_config || return 1
+
+    umask 077
+    install -d -m 0700 /run/parallax || return 1
+    local candidate
+    candidate="$(mktemp /run/parallax/candidate.XXXXXXXX)" || return 1
+
+    if ! /usr/bin/ucode /usr/share/parallax/render.uc > "$candidate"; then
+        rm -f "$candidate"
+        echo 'Parallax candidate generation rejected' >&2
+        return 1
+    fi
+    chmod 0600 "$candidate" || { rm -f "$candidate"; return 1; }
+    printf '%s\n' "$candidate"
 }
 
 case "${1:-help}" in
@@ -42,6 +68,24 @@ case "${1:-help}" in
             echo 'Parallax daemon is stopped or unavailable' >&2
             exit 1
         fi
+        ;;
+    render)
+        candidate="$(make_candidate)" || exit 1
+        printf 'Candidate written privately: %s\n' "$candidate"
+        ;;
+    validate)
+        if ! command -v sing-box >/dev/null 2>&1; then
+            echo 'sing-box not installed; cannot validate candidate' >&2
+            exit 1
+        fi
+        candidate="$(make_candidate)" || exit 1
+        if ! sing-box check -c "$candidate" >/dev/null 2>&1; then
+            rm -f "$candidate"
+            echo 'sing-box check rejected generated configuration' >&2
+            exit 1
+        fi
+        rm -f "$candidate"
+        echo 'OK: generated JSON passed sing-box check (routing untouched)'
         ;;
     help|-h|--help)
         usage

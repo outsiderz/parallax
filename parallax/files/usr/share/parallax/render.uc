@@ -94,7 +94,7 @@ if (main.schema_version != '2' || main.mode != 'selective' ||
     main.apply_mode != 'config_only')
     fail('unsupported schema or mode');
 
-if (!(['0', '1'].includes(main.enabled)))
+if (index([ '0', '1' ], main.enabled) < 0)
     fail('invalid main enabled flag');
 
 let profiles = [];

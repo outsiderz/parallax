@@ -40,7 +40,7 @@ parallax_check_platform() {
 }
 
 parallax_check_config() {
-    local enabled schema mode
+    local enabled schema mode apply_mode default_outbound
     if ! uci -q show parallax >/dev/null 2>&1; then
         echo 'Cannot read UCI configuration: parallax' >&2
         return 1
@@ -48,13 +48,22 @@ parallax_check_config() {
     schema="$(uci -q get parallax.main.schema_version)" || return 1
     enabled="$(uci -q get parallax.main.enabled)" || return 1
     mode="$(uci -q get parallax.main.mode)" || return 1
-    if [ "$schema" != '1' ]; then
-        echo 'Unsupported parallax UCI schema_version (expected 1)' >&2
+    apply_mode="$(uci -q get parallax.main.apply_mode)" || return 1
+    default_outbound="$(uci -q get parallax.main.default_outbound)" || return 1
+    if [ "$schema" != '2' ]; then
+        echo 'Unsupported parallax UCI schema_version (expected 2)' >&2
         return 1
     fi
     case "$enabled" in
         0|1) ;;
         *) echo 'parallax.main.enabled must be 0 or 1' >&2; return 1 ;;
+    esac
+    if [ "$apply_mode" != 'config_only' ]; then
+        echo 'MVP-b only accepts apply_mode=config_only' >&2
+        return 1
+    fi
+    case "$default_outbound" in
+        ''|*[!a-zA-Z0-9_-]*) echo 'Invalid default_outbound tag' >&2; return 1 ;;
     esac
     if [ "$mode" != 'selective' ]; then
         echo 'MVP (a) only accepts mode=selective' >&2
