@@ -88,10 +88,13 @@ jobs:
           set -euo pipefail
           tar --zstd -xf "$DOWNLOAD_DIR/$SDK_FILE" -C "$SDK_DIR" --strip-components=1
           cd "$SDK_DIR"
-          # The official LuCI SDK integration uses feeds/luci/luci.mk.
+          # SDK already contains its base package definitions. Installing every
+          # feed package creates duplicate base packages and Kconfig cycles.
+          # Only install the LuCI host build support needed by luci.mk.
           ./scripts/feeds update -a 2>&1 | tee "$REPORT_DIR/feeds-update.log"
-          ./scripts/feeds install -a 2>&1 | tee "$REPORT_DIR/feeds-install.log"
+          ./scripts/feeds install -p luci luci-base 2>&1 | tee "$REPORT_DIR/feeds-install.log"
           test -f feeds/luci/luci.mk
+          test -f package/feeds/luci/luci-base/Makefile
 
       - name: Build parallax + LuCI + RU translation in 25.12 SDK
         run: |
@@ -99,7 +102,145 @@ jobs:
           cp -a "$GITHUB_WORKSPACE/parallax" "$SDK_DIR/package/parallax"
           cp -a "$GITHUB_WORKSPACE/luci-app-parallax" "$SDK_DIR/package/luci-app-parallax"
           cd "$SDK_DIR"
+          # Enable package targets explicitly: an SDK does not automatically
+          # select new feed packages just because their Makefiles exist.
+          cat >> .config <<'CONFIG'
+          CONFIG_PACKAGE_parallax=m
+          CONFIG_PACKAGE_luci-app-parallax=m
+          CONFIG_PACKAGE_luci-i18n-parallax-ru=m
+          CONFIG_LUCI_LANG_ru=y
+          CONFIG
           make defconfig 2>&1 | tee "$REPORT_DIR/sdk-defconfig.log"
+          grep -E '^CONFIG_PACKAGE_(parallax|luci-app-parallax|luci-i18n-parallax-ru)=' .config | tee "$REPORT_DIR/package-selection.txt"
+          grep -q '^CONFIG_PACKAGE_parallax=m
+          make -j2 package/parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-parallax.log"
+          # luci.mk generates luci-i18n-parallax-ru from po/ru/parallax.po.
+          make -j2 package/luci-app-parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-luci.log"
+          find bin/packages -type f -name '*.apk' | sort > "$REPORT_DIR/all-sdk-apks.txt"
+          for pkg in parallax luci-app-parallax luci-i18n-parallax-ru; do
+            mapfile -t matches < <(find bin/packages -type f -name "${pkg}-*.apk" | sort)
+            test "${#matches[@]}" -eq 1 || { echo "Expected one .apk for $pkg; got ${#matches[@]}"; exit 1; }
+            cp "${matches[0]}" "$ARTIFACT_DIR/"
+          done
+          (cd "$ARTIFACT_DIR" && sha256sum *.apk && ls -lh *.apk) \
+            | tee "$REPORT_DIR/produced-apks.txt"
+
+      - name: Expand combined-efi image and run real QEMU KVM smoke
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/.ci/guest"
+          gzip -dc "$DOWNLOAD_DIR/$IMAGE_FILE" > "$GITHUB_WORKSPACE/.ci/guest/openwrt.img"
+          bash scripts/ci/qemu-smoke.sh \
+            "$GITHUB_WORKSPACE/.ci/guest/openwrt.img" \
+            "$ARTIFACT_DIR" "$REPORT_DIR/qemu" \
+            2>&1 | tee "$REPORT_DIR/qemu-smoke.log"
+
+      - name: Upload built APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-openwrt-${{ env.OPENWRT_VERSION }}-x86-64-apks
+          path: .ci/artifacts/*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload build logs and complete QEMU diff evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-openwrt-${{ env.OPENWRT_VERSION }}-ci-reports
+          path: |
+            .ci/reports/**
+            .ci/downloads/asset-names.env
+          if-no-files-found: warn
+          retention-days: 30
+ .config
+          grep -q '^CONFIG_PACKAGE_luci-app-parallax=m
+          make -j2 package/parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-parallax.log"
+          # luci.mk generates luci-i18n-parallax-ru from po/ru/parallax.po.
+          make -j2 package/luci-app-parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-luci.log"
+          find bin/packages -type f -name '*.apk' | sort > "$REPORT_DIR/all-sdk-apks.txt"
+          for pkg in parallax luci-app-parallax luci-i18n-parallax-ru; do
+            mapfile -t matches < <(find bin/packages -type f -name "${pkg}-*.apk" | sort)
+            test "${#matches[@]}" -eq 1 || { echo "Expected one .apk for $pkg; got ${#matches[@]}"; exit 1; }
+            cp "${matches[0]}" "$ARTIFACT_DIR/"
+          done
+          (cd "$ARTIFACT_DIR" && sha256sum *.apk && ls -lh *.apk) \
+            | tee "$REPORT_DIR/produced-apks.txt"
+
+      - name: Expand combined-efi image and run real QEMU KVM smoke
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/.ci/guest"
+          gzip -dc "$DOWNLOAD_DIR/$IMAGE_FILE" > "$GITHUB_WORKSPACE/.ci/guest/openwrt.img"
+          bash scripts/ci/qemu-smoke.sh \
+            "$GITHUB_WORKSPACE/.ci/guest/openwrt.img" \
+            "$ARTIFACT_DIR" "$REPORT_DIR/qemu" \
+            2>&1 | tee "$REPORT_DIR/qemu-smoke.log"
+
+      - name: Upload built APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-openwrt-${{ env.OPENWRT_VERSION }}-x86-64-apks
+          path: .ci/artifacts/*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload build logs and complete QEMU diff evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-openwrt-${{ env.OPENWRT_VERSION }}-ci-reports
+          path: |
+            .ci/reports/**
+            .ci/downloads/asset-names.env
+          if-no-files-found: warn
+          retention-days: 30
+ .config
+          grep -Eq '^CONFIG_PACKAGE_luci-i18n-parallax-ru=[my]
+          make -j2 package/parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-parallax.log"
+          # luci.mk generates luci-i18n-parallax-ru from po/ru/parallax.po.
+          make -j2 package/luci-app-parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-luci.log"
+          find bin/packages -type f -name '*.apk' | sort > "$REPORT_DIR/all-sdk-apks.txt"
+          for pkg in parallax luci-app-parallax luci-i18n-parallax-ru; do
+            mapfile -t matches < <(find bin/packages -type f -name "${pkg}-*.apk" | sort)
+            test "${#matches[@]}" -eq 1 || { echo "Expected one .apk for $pkg; got ${#matches[@]}"; exit 1; }
+            cp "${matches[0]}" "$ARTIFACT_DIR/"
+          done
+          (cd "$ARTIFACT_DIR" && sha256sum *.apk && ls -lh *.apk) \
+            | tee "$REPORT_DIR/produced-apks.txt"
+
+      - name: Expand combined-efi image and run real QEMU KVM smoke
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/.ci/guest"
+          gzip -dc "$DOWNLOAD_DIR/$IMAGE_FILE" > "$GITHUB_WORKSPACE/.ci/guest/openwrt.img"
+          bash scripts/ci/qemu-smoke.sh \
+            "$GITHUB_WORKSPACE/.ci/guest/openwrt.img" \
+            "$ARTIFACT_DIR" "$REPORT_DIR/qemu" \
+            2>&1 | tee "$REPORT_DIR/qemu-smoke.log"
+
+      - name: Upload built APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-openwrt-${{ env.OPENWRT_VERSION }}-x86-64-apks
+          path: .ci/artifacts/*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload build logs and complete QEMU diff evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-openwrt-${{ env.OPENWRT_VERSION }}-ci-reports
+          path: |
+            .ci/reports/**
+            .ci/downloads/asset-names.env
+          if-no-files-found: warn
+          retention-days: 30
+ .config
           make -j2 package/parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-parallax.log"
           # luci.mk generates luci-i18n-parallax-ru from po/ru/parallax.po.
           make -j2 package/luci-app-parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-luci.log"
