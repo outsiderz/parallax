@@ -134,7 +134,8 @@ guest 'parallax status' | tee "$REPORT/cli-status.log"
 send "$GITHUB_WORKSPACE/tests/ucode_runtime.uc" /tmp/ucode_runtime.uc
 guest 'ucode /tmp/ucode_runtime.uc' | tee "$REPORT/ucode.log"
 # MVP-b config-only candidate: it must be private and contain NO listeners.
-guest 'set -eu; result="$(parallax render)"; case "$result" in "Candidate written privately: /run/parallax/candidate."*) ;; *) exit 1 ;; esac; candidate="${result##* }"; test -f "$candidate"; test "$(stat -c %a "$candidate")" = 600; cp "$candidate" /tmp/parallax-candidate.json; rm -f "$candidate"'
+send "$GITHUB_WORKSPACE/tests/ucode_permissions.uc" /tmp/parallax-permissions.uc
+guest 'set -eu; result="$(parallax render)"; case "$result" in "Candidate written privately: /run/parallax/candidate."*) ;; *) exit 1 ;; esac; candidate="${result##* }"; test -f "$candidate"; ucode /tmp/parallax-permissions.uc "$candidate" file; cp "$candidate" /tmp/parallax-candidate.json; rm -f "$candidate"'
 send "$GITHUB_WORKSPACE/tests/ucode_render.uc" /tmp/ucode_render.uc
 guest 'ucode /tmp/ucode_render.uc; rm -f /tmp/parallax-candidate.json' | tee "$REPORT/ucode-render.log"
 
@@ -146,8 +147,8 @@ first="$(parallax apply --config-only)"
 printf "%s\n" "$first"
 rev="$(printf "%s\n" "$first" | sed -n "s/^applied revision=\([^ ]*\) sha256=.*/\1/p")"
 test -n "$rev"
-test "$(stat -c %a /etc/parallax/generated)" = 700
-test "$(stat -c %a /etc/parallax/generated/active.json)" = 600
+ucode /tmp/parallax-permissions.uc /etc/parallax/generated directory
+ucode /tmp/parallax-permissions.uc /etc/parallax/generated/active.json file
 original="$(sha256sum /etc/parallax/generated/active.json | cut -d " " -f1)"
 parallax history
 parallax diff | grep -q "^unchanged "
@@ -241,6 +242,8 @@ guest 'test -s /usr/share/luci/menu.d/luci-app-parallax.json; test -s /usr/share
 guest 'code=$(curl -sS -c /tmp/parallax-cookie -o /tmp/parallax-auth-response -w "%{http_code}" -d "luci_username=root" --data-urlencode "luci_password@/tmp/parallax-ci-web-password" http://127.0.0.1/cgi-bin/luci/admin/services/parallax); test "$code" = 302 || { echo "FAIL: LuCI login expected 302; got $code"; exit 1; }; grep -q "sysauth_http" /tmp/parallax-cookie; rm -f /tmp/parallax-ci-web-password'
 guest 'curl -fsS -b /tmp/parallax-cookie http://127.0.0.1/cgi-bin/luci/admin/services/parallax -o /tmp/page.html; test -s /tmp/page.html; grep -Eq "luci|LuCI" /tmp/page.html; wc -c /tmp/page.html' | tee "$REPORT/luci-authenticated-page.log"
 guest 'curl -fsS http://127.0.0.1/luci-static/resources/view/parallax/overview.js | grep -q daemon_running'
+send "$GITHUB_WORKSPACE/tests/rpcd_acl.sh" /tmp/parallax-rpcd-acl.sh
+guest 'sh /tmp/parallax-rpcd-acl.sh' | tee "$REPORT/rpcd-acl.log"
 OLD="$(guest 'pidof ucode' | awk '{print $1}')"
 test -n "$OLD"
 guest "kill -9 $OLD"
@@ -266,4 +269,12 @@ for stage in after-install after-remove; do
  diff -u "$REPORT/before/rules-v4.txt" "$REPORT/$stage/rules-v4.txt"
 done
 if guest 'ubus list parallax' >/dev/null 2>&1; then echo "FAIL: ubus object remains"; exit 1; fi
+# Normal apk removal must preserve edited UCI conffile and private user data.
+guest 'test -f /etc/config/parallax; test "$(uci -q get parallax.main.enabled)" = 1; test "$(uci -q get parallax.ci_rule.match)" = domain_suffix; test -f /etc/parallax/generated/active.json; test -d /etc/parallax/credentials; echo "PASS: apk del retains conffile, credentials directory and revision store"' | tee "$REPORT/remove-preservation.log"
+# Reinstall before explicitly purging so the admin command is available.
+guest 'apk add --allow-untrusted /tmp/parallax-*.apk /tmp/luci-app-parallax-*.apk /tmp/luci-i18n-parallax-ru-*.apk' | tee "$REPORT/reinstall.log"
+# The service was disabled before removal and must not auto-run on reinstall.
+if guest 'ubus list parallax' >/dev/null 2>&1; then echo "FAIL: service automatically started after reinstall"; exit 1; fi
+guest 'parallax purge --confirm-delete-all; test ! -e /etc/config/parallax; test ! -e /etc/parallax; apk del luci-i18n-parallax-ru luci-app-parallax parallax; test ! -e /etc/config/parallax; test ! -e /etc/parallax; echo "PASS: explicit purge removes UCI and credentials/revisions"' | tee "$REPORT/purge.log"
+
 echo "PASS QEMU KVM" | tee "$REPORT/PASS.txt"
