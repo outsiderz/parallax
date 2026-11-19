@@ -50,6 +50,28 @@ PY
 ssh-keygen -q -t ed25519 -N '' -f "$WORK/key"
 sudo install -d -m 0700 "$WORK/mnt/etc/dropbear"
 sudo install -m 0600 "$WORK/key.pub" "$WORK/mnt/etc/dropbear/authorized_keys"
+# Disposable QEMU image only: set a random test password for authenticated LuCI HTTP.
+TEST_WEB_PASSWORD="$(openssl rand -hex 20)"
+TEST_WEB_HASH="$(printf '%s\n' "$TEST_WEB_PASSWORD" | openssl passwd -6 -stdin)"
+sudo python3 - "$WORK/mnt/etc/shadow" "$TEST_WEB_HASH" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+lines = p.read_text().splitlines(keepends=True)
+found = False
+for i, line in enumerate(lines):
+    fields = line.rstrip('\n').split(':')
+    if fields[0] == 'root':
+        fields[1] = sys.argv[2]
+        lines[i] = ':'.join(fields) + '\n'
+        found = True
+if not found:
+    raise SystemExit('FAIL: guest root user not found in /etc/shadow')
+p.write_text(''.join(lines))
+PY
+printf '%s' "$TEST_WEB_PASSWORD" > "$WORK/web-password"
+chmod 600 "$WORK/web-password"
+unset TEST_WEB_PASSWORD TEST_WEB_HASH
 sudo sync
 sudo umount "$WORK/mnt"; MOUNTED=0
 sudo losetup -d "$LOOP"; LOOP=""
@@ -76,6 +98,10 @@ done
 test "$READY" = 1
 guest 'cat /etc/openwrt_release; ip -4 route; test "$(uci -q get network.lan.proto)" = dhcp' | tee "$REPORT/network.log"
 guest 'apk update; apk add luci nftables-json curl ca-bundle; /etc/init.d/uhttpd enable; /etc/init.d/uhttpd restart' | tee "$REPORT/baseline.log"
+# luci-i18n-parallax-ru post-install registers this language in UCI.
+# Establish that stock LuCI setting before the baseline snapshot so a
+# successful Parallax installation changes only /etc/config/parallax.
+guest 'uci set "luci.languages.ru=Русский (Russian)"; uci commit luci'
 snap() {
  mkdir -p "$REPORT/$1"
  guest 'tar -C /etc -cf - config' | tar -xf - -C "$REPORT/$1"
@@ -104,7 +130,13 @@ guest "ubus call parallax ping '{}'" | tee "$REPORT/ping.log"
 guest 'parallax status' | tee "$REPORT/cli-status.log"
 send "$GITHUB_WORKSPACE/tests/ucode_runtime.uc" /tmp/ucode_runtime.uc
 guest 'ucode /tmp/ucode_runtime.uc' | tee "$REPORT/ucode.log"
-guest 'test -s /usr/share/luci/menu.d/luci-app-parallax.json; test -s /usr/share/rpcd/acl.d/luci-app-parallax.json; curl -fsS http://127.0.0.1/cgi-bin/luci/admin/services/parallax -o /tmp/page.html; test -s /tmp/page.html'
+# Protected LuCI pages require an authenticated session: an anonymous
+# request returns HTTP 403 + X-LuCI-Login-Required by design.
+send "$WORK/web-password" /tmp/parallax-ci-web-password
+guest 'chmod 600 /tmp/parallax-ci-web-password'
+guest 'test -s /usr/share/luci/menu.d/luci-app-parallax.json; test -s /usr/share/rpcd/acl.d/luci-app-parallax.json; grep -q "parallax/overview" /usr/share/luci/menu.d/luci-app-parallax.json; grep -q "status" /usr/share/rpcd/acl.d/luci-app-parallax.json'
+guest 'code=$(curl -sS -c /tmp/parallax-cookie -o /tmp/parallax-auth-response -w "%{http_code}" -d "luci_username=root" --data-urlencode "luci_password@/tmp/parallax-ci-web-password" http://127.0.0.1/cgi-bin/luci/admin/services/parallax); test "$code" = 302 || { echo "FAIL: LuCI login expected 302; got $code"; exit 1; }; grep -q "sysauth_http" /tmp/parallax-cookie; rm -f /tmp/parallax-ci-web-password'
+guest 'curl -fsS -b /tmp/parallax-cookie http://127.0.0.1/cgi-bin/luci/admin/services/parallax -o /tmp/page.html; test -s /tmp/page.html; grep -Eq "luci|LuCI" /tmp/page.html; wc -c /tmp/page.html' | tee "$REPORT/luci-authenticated-page.log"
 guest 'curl -fsS http://127.0.0.1/luci-static/resources/view/parallax/overview.js | grep -q daemon_running'
 OLD="$(guest 'pidof ucode' | awk '{print $1}')"
 test -n "$OLD"
