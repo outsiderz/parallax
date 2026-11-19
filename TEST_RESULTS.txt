@@ -1,0 +1,6 @@
+Parallax MVP (a) - status
+Host unit tests were previously performed on the source snapshot.
+SDK compilation and QEMU runtime must be validated by a real GitHub Actions run.
+This repository includes a workflow that records compile outputs, APKs,
+ubus replies, real ucode test output, procd respawn and config/nft diffs.
+Do not claim success until GitHub Actions has completed successfully.
