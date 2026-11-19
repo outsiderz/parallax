@@ -1,0 +1,6 @@
+# Parallax MVP (a): disabled until explicitly enabled by an administrator.
+# This file is a forward-compatible core; only globals.main is processed now.
+config globals 'main'
+	option schema_version '1'
+	option enabled '0'
+	option mode 'selective'

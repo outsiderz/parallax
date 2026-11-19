@@ -1,0 +1,54 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Read-only CLI for MVP (a); no shell-sourced user inputs.
+
+VERSION='0.1.0'
+
+usage() {
+    cat <<'USAGE'
+Usage: parallax <command>
+  version     Print Parallax version
+  check       Validate platform and MVP-a UCI settings (read-only)
+  status      Read the live read-only ubus status
+  ping        Ping the ubus daemon
+  help        Show this help
+
+MVP-a does NOT implement routing, sing-box, VPN or DNS actions.
+To enable the status daemon: uci set parallax.main.enabled=1;
+                              uci commit parallax;
+                              /etc/init.d/parallax restart
+USAGE
+}
+
+case "${1:-help}" in
+    version)
+        printf 'Parallax %s (MVP-a)\n' "$VERSION"
+        ;;
+    check)
+        # shellcheck disable=SC1091
+        . /usr/share/parallax/platform.sh
+        parallax_check_platform || exit 1
+        parallax_check_config || exit 1
+        echo 'OK: platform and MVP-a UCI configuration valid (routing untouched)'
+        ;;
+    status)
+        if ! ubus call parallax status '{}'; then
+            echo 'Parallax daemon is stopped or unavailable' >&2
+            exit 1
+        fi
+        ;;
+    ping)
+        if ! ubus call parallax ping '{}'; then
+            echo 'Parallax daemon is stopped or unavailable' >&2
+            exit 1
+        fi
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        printf 'Unknown Parallax command: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac

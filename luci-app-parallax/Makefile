@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+include $(TOPDIR)/rules.mk
+
+PKG_VERSION:=0.1.0
+PKG_RELEASE:=1
+PKG_LICENSE:=MIT
+PKG_LICENSE_FILES:=LICENSE
+
+LUCI_TITLE:=Parallax - safe read-only scaffold
+LUCI_DEPENDS:=+luci-base +parallax
+LUCI_PKGARCH:=all
+
+# This package is a sibling of parallax/ in a custom feed or SDK/package/.
+# Use the official LuCI infrastructure; it also generates
+# luci-i18n-parallax-ru from po/ru/parallax.po.
+include $(TOPDIR)/feeds/luci/luci.mk
