@@ -111,6 +111,14 @@ snap() {
  guest 'apk list --installed' >"$REPORT/$1/apk.txt"
  guest 'ip -4 route show table all' >"$REPORT/$1/routes-v4.txt"
  guest 'ip -4 rule show' >"$REPORT/$1/rules-v4.txt"
+ guest 'ip -6 route show table all' >"$REPORT/$1/routes-v6.txt"
+ guest 'ip -6 rule show' >"$REPORT/$1/rules-v6.txt"
+ guest 'cat /etc/resolv.conf' >"$REPORT/$1/resolv-conf.txt"
+ guest 'test ! -f /tmp/resolv.conf.d/resolv.conf.auto || cat /tmp/resolv.conf.d/resolv.conf.auto' >"$REPORT/$1/resolv-auto.txt"
+ # Kernel TCP listeners (state 0A) and UDP bound sockets (state 07).
+ # Ignore ephemeral established SSH sessions while recording IPv4/IPv6.
+ guest 'awk "FNR > 1 && ((FILENAME ~ /tcp/ && \$4 == \"0A\") || (FILENAME ~ /udp/ && \$4 == \"07\")) { print FILENAME, \$2, \$4 }" /proc/net/tcp /proc/net/tcp6 /proc/net/udp /proc/net/udp6 | sort' >"$REPORT/$1/listening-sockets.txt"
+ guest 'ps w' >"$REPORT/$1/process-list.txt"
 }
 snap before
 for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
@@ -319,6 +327,9 @@ for stage in after-install after-remove; do
  diff -u "$REPORT/before/nft-static.txt" "$REPORT/$stage/nft-static.txt"
  diff -u "$REPORT/before/routes-v4.txt" "$REPORT/$stage/routes-v4.txt"
  diff -u "$REPORT/before/rules-v4.txt" "$REPORT/$stage/rules-v4.txt"
+ for evidence in routes-v6 rules-v6 resolv-conf resolv-auto listening-sockets; do
+  diff -u "$REPORT/before/$evidence.txt" "$REPORT/$stage/$evidence.txt" >"$REPORT/$evidence-diff-$stage.txt"
+ done
 done
 if guest 'ubus list parallax' >/dev/null 2>&1; then echo "FAIL: ubus object remains"; exit 1; fi
 # Normal apk removal must preserve edited UCI conffile and private user data.
@@ -391,9 +402,32 @@ ubus call parallax status "{}"
 echo "PASS: explicit administrator enable+start succeeds after reinstall (ubus ready)"
 ' 2>&1 | tee "$REPORT/reinstall-explicit-start.log"
 guest 'set -eu
-echo "COMMAND: parallax purge --confirm-delete-all"
+echo "CHECK: interrupted reinstall guard must fail closed on unsafe marker"
+marker=/etc/parallax/.reinstall-stopped
+printf "sentinel\n" >/tmp/parallax-purge-sentinel
+ln -s /tmp/parallax-purge-sentinel "$marker"
+if parallax purge --confirm-delete-all >/tmp/parallax-purge-bad-marker.log 2>&1; then
+  echo "FAIL: purge accepted symlink marker"
+  exit 1
+fi
+test "$(cat /tmp/parallax-purge-sentinel)" = sentinel
+test -f /etc/config/parallax
+test -f /etc/parallax/generated/active.json
+echo "PASS: symlink marker rejected without deleting user data"
+rm -f "$marker" /tmp/parallax-purge-sentinel
+: >"$marker"
+chmod 0644 "$marker"
+if parallax purge --confirm-delete-all >/tmp/parallax-purge-bad-marker.log 2>&1; then
+  echo "FAIL: purge accepted insecure marker permissions"
+  exit 1
+fi
+test -f /etc/config/parallax
+test -f /etc/parallax/generated/active.json
+echo "PASS: insecure marker rejected without deleting user data"
+chmod 0600 "$marker"
+echo "COMMAND: parallax purge --confirm-delete-all (recover interrupted reinstall)"
 parallax purge --confirm-delete-all
-for path in /etc/config/parallax /etc/parallax /etc/parallax/generated /etc/parallax/credentials; do
+for path in /etc/config/parallax /etc/parallax /etc/parallax/generated /etc/parallax/credentials /etc/parallax/.reinstall-stopped; do
   test ! -e "$path" || { echo "FAIL: remains after purge: $path"; exit 1; }
   echo "ABSENT after purge: $path"
 done
