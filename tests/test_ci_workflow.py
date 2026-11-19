@@ -57,6 +57,22 @@ class CIChecks(unittest.TestCase):
         self.assertIn("set +e", smoke)
         self.assertIn("rpcd-acl.log", smoke)
         self.assertIn("luci-js.log", smoke)
+        self.assertIn("negative-validation.log", smoke)
+        self.assertIn("routes-v6.txt", smoke)
+        self.assertIn("rules-v6.txt", smoke)
+        self.assertIn("resolv-conf.txt", smoke)
+        self.assertIn("listening-sockets.txt", smoke)
+        self.assertIn("symlink marker rejected", smoke)
+        negative = ROOT/"tests/negative_validation.sh"
+        self.assertTrue(negative.is_file())
+        self.assertEqual(subprocess.run(["sh", "-n", str(negative)]).returncode, 0)
+        for case in ["invalid_uuid", "invalid_hostname", "invalid_port",
+                     "invalid_reality_key", "invalid_short_id",
+                     "unknown_profile_option", "missing_credential_reference",
+                     "missing_outbound_reference", "unknown_main_option",
+                     "invalid_priority", "unsupported_matcher", "invalid_ipv4_cidr"]:
+            self.assertIn("reject " + case, negative.read_text())
+
         self.assertIn("reinstall-explicit-start.log", smoke)
         self.assertIn("for attempt in $(seq 1 30)", smoke)
         self.assertIn("ping did not return ok=true", smoke)

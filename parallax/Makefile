@@ -53,6 +53,7 @@ if [ "$$(uci -q get parallax.main.enabled 2>/dev/null)" = "1" ]; then
 	umask 077
 	mkdir -p /etc/parallax || exit 1
 	chmod 0700 /etc/parallax || exit 1
+	[ ! -L /etc/parallax/.reinstall-stopped ] || exit 1
 	: > /etc/parallax/.reinstall-stopped || exit 1
 	chmod 0600 /etc/parallax/.reinstall-stopped || exit 1
 fi

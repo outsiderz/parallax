@@ -59,6 +59,12 @@ class MVPBContract(unittest.TestCase):
         cli = (ROOT / 'parallax/files/usr/bin/parallax').read_text()
         self.assertIn('purge --confirm-delete-all', cli)
         self.assertIn('/etc/init.d/parallax disable', cli)
+        txn = (ROOT / "parallax/files/usr/share/parallax/transaction.uc").read_text()
+        self.assertIn("filename != '.reinstall-stopped'", txn)
+        self.assertIn("regular(marker)", txn)
+        self.assertIn("deleteTree(marker)", txn)
+        self.assertLess(txn.index("regular(marker)"), txn.index("deleteTree(ROOT + '/credentials')"))
+
 
     def test_config_only_explicit(self):
         text = (ROOT / 'parallax/files/etc/config/parallax').read_text()
