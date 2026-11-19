@@ -14,6 +14,8 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("ucode-mod-ubus",core)
         self.assertIn("LUCI_DEPENDS:=+luci-base +parallax",luci)
         self.assertIn("feeds/luci/luci.mk",luci)
+        # include/scan.mk discovers LuCI recipes via the exact marker.
+        self.assertIn("call BuildPackage",luci)
 
     def test_shell_syntax(self):
         for file in ["parallax/files/etc/init.d/parallax",

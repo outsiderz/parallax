@@ -14,3 +14,5 @@ LUCI_PKGARCH:=all
 # Use the official LuCI infrastructure; it also generates
 # luci-i18n-parallax-ru from po/ru/parallax.po.
 include $(TOPDIR)/feeds/luci/luci.mk
+
+# call BuildPackage - OpenWrt buildroot signature
