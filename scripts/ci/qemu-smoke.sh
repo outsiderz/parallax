@@ -257,6 +257,9 @@ test -z "$(pidof sing-box || true)"
 echo "PASS: real VLESS Reality check, credentials fail-closed and no leaks"
 ' | tee "$REPORT/vless-reality-validation.log"
 
+# Malformed UCI inputs must fail before promotion. Keep credentials out of logs.
+send "$GITHUB_WORKSPACE/tests/negative_validation.sh" /tmp/parallax-negative-validation.sh
+guest 'sh /tmp/parallax-negative-validation.sh' 2>&1 | tee "$REPORT/negative-validation.log"
 
 # Protected LuCI pages require an authenticated session: an anonymous
 # request returns HTTP 403 + X-LuCI-Login-Required by design.
