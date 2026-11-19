@@ -58,6 +58,20 @@ class CIChecks(unittest.TestCase):
         self.assertIn("rpcd-acl.log", smoke)
         self.assertIn("luci-js.log", smoke)
         self.assertIn("negative-validation.log", smoke)
+        self.assertIn("transaction-recovery.log", smoke)
+        self.assertIn("tests/ucode_lock_holder.uc", smoke)
+        self.assertIn("tests/transaction_recovery.sh", smoke)
+        recovery = ROOT/"tests/transaction_recovery.sh"
+        self.assertTrue(recovery.is_file())
+        self.assertEqual(subprocess.run(["sh", "-n", str(recovery)]).returncode, 0)
+        recovery_source = recovery.read_text()
+        for contract in ["crash_at_sync 1", "crash_at_sync 2",
+                         "lock-contention", "history limited to 10",
+                         "parallax rollback", "sing-box check -c"]:
+            self.assertIn(contract, recovery_source)
+        holder = (ROOT/"tests/ucode_lock_holder.uc").read_text()
+        self.assertIn("lock('xn')", holder)
+        self.assertIn("/etc/parallax/generated/.lock", holder)
         self.assertIn("routes-v6.txt", smoke)
         self.assertIn("rules-v6.txt", smoke)
         self.assertIn("resolv-conf.txt", smoke)

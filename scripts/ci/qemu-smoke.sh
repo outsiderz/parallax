@@ -261,6 +261,11 @@ echo "PASS: real VLESS Reality check, credentials fail-closed and no leaks"
 send "$GITHUB_WORKSPACE/tests/negative_validation.sh" /tmp/parallax-negative-validation.sh
 guest 'sh /tmp/parallax-negative-validation.sh' 2>&1 | tee "$REPORT/negative-validation.log"
 
+# Live transaction contention and process-crash tests run only inside QEMU.
+send "$GITHUB_WORKSPACE/tests/ucode_lock_holder.uc" /tmp/parallax-ci-lock-holder.uc
+send "$GITHUB_WORKSPACE/tests/transaction_recovery.sh" /tmp/parallax-ci-transaction-recovery.sh
+guest 'sh /tmp/parallax-ci-transaction-recovery.sh' 2>&1 | tee "$REPORT/transaction-recovery.log"
+
 # Protected LuCI pages require an authenticated session: an anonymous
 # request returns HTTP 403 + X-LuCI-Login-Required by design.
 send "$WORK/web-password" /tmp/parallax-ci-web-password
