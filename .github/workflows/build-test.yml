@@ -1,0 +1,143 @@
+name: OpenWrt 25.12 x86/64 — SDK build and QEMU KVM smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      openwrt_version:
+        description: 'Pinned OpenWrt 25.12.x release (must have matching SDK and EFI image)'
+        required: true
+        default: '25.12.6'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: parallax-sdk-qemu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      OPENWRT_VERSION: ${{ inputs.openwrt_version || '25.12.6' }}
+      OPENWRT_TARGET: x86/64
+      DOWNLOAD_DIR: ${{ github.workspace }}/.ci/downloads
+      SDK_DIR: ${{ github.workspace }}/.ci/sdk
+      ARTIFACT_DIR: ${{ github.workspace }}/.ci/artifacts
+      REPORT_DIR: ${{ github.workspace }}/.ci/reports
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout Parallax
+        uses: actions/checkout@v4
+
+      - name: Host dependencies (SDK, EFI/QEMU, Python tests)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates curl file g++ gawk gcc-multilib gettext \
+            git libncurses-dev libssl-dev python3 python3-yaml rsync \
+            unzip wget zstd qemu-system-x86 qemu-utils ovmf \
+            e2fsprogs util-linux udev openssh-client openssl nodejs \
+            libelf-dev flex bison patch xz-utils
+          mkdir -p "$DOWNLOAD_DIR" "$SDK_DIR" "$ARTIFACT_DIR" "$REPORT_DIR"
+          (command -v qemu-system-x86_64; qemu-system-x86_64 --version; \
+           python3 --version; uname -a; ls -l /dev/kvm || :) \
+            | tee "$REPORT_DIR/host-environment.txt"
+
+      - name: Host unit tests, including asset discovery fixture
+        run: |
+          set -euo pipefail
+          ./tests/run.sh 2>&1 | tee "$REPORT_DIR/unit-tests.log"
+
+      - name: Discover official SDK and combined-efi image filenames
+        run: |
+          set -euo pipefail
+          BASE="https://downloads.openwrt.org/releases/${OPENWRT_VERSION}/targets/x86/64"
+          echo "OPENWRT_BASE=$BASE" >> "$GITHUB_ENV"
+          curl -fLSsS --retry 5 --retry-delay 3 "$BASE/" -o "$DOWNLOAD_DIR/index.html"
+          python3 scripts/ci/discover_assets.py \
+            --html "$DOWNLOAD_DIR/index.html" \
+            --version "$OPENWRT_VERSION" \
+            --output "$DOWNLOAD_DIR/asset-names.env" \
+            | tee "$REPORT_DIR/discovered-files.txt"
+          cat "$DOWNLOAD_DIR/asset-names.env" >> "$GITHUB_ENV"
+
+      - name: Download and checksum-verify official SDK + EFI image
+        run: |
+          set -euo pipefail
+          cd "$DOWNLOAD_DIR"
+          curl -fL --retry 5 --retry-delay 3 --continue-at - \
+            "$OPENWRT_BASE/$SDK_FILE" -o "$SDK_FILE"
+          curl -fL --retry 5 --retry-delay 3 --continue-at - \
+            "$OPENWRT_BASE/$IMAGE_FILE" -o "$IMAGE_FILE"
+          curl -fLSsS --retry 5 --retry-delay 3 "$OPENWRT_BASE/sha256sums" -o sha256sums
+          bash "$GITHUB_WORKSPACE/scripts/ci/verify_downloads.sh" \
+            2>&1 | tee "$REPORT_DIR/sha256-verify.log"
+
+      - name: Extract SDK and update official feeds
+        run: |
+          set -euo pipefail
+          tar --zstd -xf "$DOWNLOAD_DIR/$SDK_FILE" -C "$SDK_DIR" --strip-components=1
+          cd "$SDK_DIR"
+          # The official LuCI SDK integration uses feeds/luci/luci.mk.
+          ./scripts/feeds update -a 2>&1 | tee "$REPORT_DIR/feeds-update.log"
+          ./scripts/feeds install -a 2>&1 | tee "$REPORT_DIR/feeds-install.log"
+          test -f feeds/luci/luci.mk
+
+      - name: Build parallax + LuCI + RU translation in 25.12 SDK
+        run: |
+          set -euo pipefail
+          cp -a "$GITHUB_WORKSPACE/parallax" "$SDK_DIR/package/parallax"
+          cp -a "$GITHUB_WORKSPACE/luci-app-parallax" "$SDK_DIR/package/luci-app-parallax"
+          cd "$SDK_DIR"
+          make defconfig 2>&1 | tee "$REPORT_DIR/sdk-defconfig.log"
+          make -j2 package/parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-parallax.log"
+          # luci.mk generates luci-i18n-parallax-ru from po/ru/parallax.po.
+          make -j2 package/luci-app-parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-luci.log"
+          find bin/packages -type f -name '*.apk' | sort > "$REPORT_DIR/all-sdk-apks.txt"
+          for pkg in parallax luci-app-parallax luci-i18n-parallax-ru; do
+            mapfile -t matches < <(find bin/packages -type f -name "${pkg}-*.apk" | sort)
+            test "${#matches[@]}" -eq 1 || { echo "Expected one .apk for $pkg; got ${#matches[@]}"; exit 1; }
+            cp "${matches[0]}" "$ARTIFACT_DIR/"
+          done
+          (cd "$ARTIFACT_DIR" && sha256sum *.apk && ls -lh *.apk) \
+            | tee "$REPORT_DIR/produced-apks.txt"
+
+      - name: Expand combined-efi image and run real QEMU KVM smoke
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/.ci/guest"
+          gzip -dc "$DOWNLOAD_DIR/$IMAGE_FILE" > "$GITHUB_WORKSPACE/.ci/guest/openwrt.img"
+          bash scripts/ci/qemu-smoke.sh \
+            "$GITHUB_WORKSPACE/.ci/guest/openwrt.img" \
+            "$ARTIFACT_DIR" "$REPORT_DIR/qemu" \
+            2>&1 | tee "$REPORT_DIR/qemu-smoke.log"
+
+      - name: Upload built APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-openwrt-${{ env.OPENWRT_VERSION }}-x86-64-apks
+          path: .ci/artifacts/*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload build logs and complete QEMU diff evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-openwrt-${{ env.OPENWRT_VERSION }}-ci-reports
+          path: |
+            .ci/reports/**
+            .ci/downloads/asset-names.env
+          if-no-files-found: warn
+          retention-days: 30
