@@ -97,7 +97,8 @@ for n in $(seq 1 120); do
 done
 test "$READY" = 1
 guest 'cat /etc/openwrt_release; ip -4 route; test "$(uci -q get network.lan.proto)" = dhcp' | tee "$REPORT/network.log"
-guest 'apk update; apk add luci nftables-json curl ca-bundle; /etc/init.d/uhttpd enable; /etc/init.d/uhttpd restart' | tee "$REPORT/baseline.log"
+guest 'apk update; apk add luci nftables-json curl ca-bundle sing-box; /etc/init.d/uhttpd enable; /etc/init.d/uhttpd restart' | tee "$REPORT/baseline.log"
+guest 'test -x "$(command -v sing-box)"; sing-box version | head -n 2' | tee "$REPORT/sing-box-version.log"
 # luci-i18n-parallax-ru post-install registers this language in UCI.
 # Establish that stock LuCI setting before the baseline snapshot so a
 # successful Parallax installation changes only /etc/config/parallax.
@@ -108,6 +109,8 @@ snap() {
  guest 'nft list ruleset' >"$REPORT/$1/nft.txt"
  guest 'nft --stateless list ruleset' >"$REPORT/$1/nft-static.txt"
  guest 'apk list --installed' >"$REPORT/$1/apk.txt"
+ guest 'ip -4 route show table all' >"$REPORT/$1/routes-v4.txt"
+ guest 'ip -4 rule show' >"$REPORT/$1/rules-v4.txt"
 }
 snap before
 for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
@@ -134,6 +137,48 @@ guest 'ucode /tmp/ucode_runtime.uc' | tee "$REPORT/ucode.log"
 guest 'set -eu; result="$(parallax render)"; case "$result" in "Candidate written privately: /run/parallax/candidate."*) ;; *) exit 1 ;; esac; candidate="${result##* }"; test -f "$candidate"; test "$(stat -c %a "$candidate")" = 600; cp "$candidate" /tmp/parallax-candidate.json; rm -f "$candidate"'
 send "$GITHUB_WORKSPACE/tests/ucode_render.uc" /tmp/ucode_render.uc
 guest 'ucode /tmp/ucode_render.uc; rm -f /tmp/parallax-candidate.json' | tee "$REPORT/ucode-render.log"
+
+# Full config-only transaction lifecycle against the installed sing-box binary.
+# Only metadata (hashes/revision IDs) leaves this guest. No JSON/credentials in logs.
+guest 'set -eu
+parallax validate
+first="$(parallax apply --config-only)"
+printf "%s\n" "$first"
+rev="$(printf "%s\n" "$first" | sed -n "s/^applied revision=\([^ ]*\) sha256=.*/\1/p")"
+test -n "$rev"
+test "$(stat -c %a /etc/parallax/generated)" = 700
+test "$(stat -c %a /etc/parallax/generated/active.json)" = 600
+original="$(sha256sum /etc/parallax/generated/active.json | cut -d " " -f1)"
+parallax history
+parallax diff | grep -q "^unchanged "
+uci set parallax.ci_rule=rule
+uci set parallax.ci_rule.enabled=1
+uci set parallax.ci_rule.match=domain_suffix
+uci add_list parallax.ci_rule.value=example.net
+uci set parallax.ci_rule.outbound=direct
+uci set parallax.ci_rule.priority=100
+uci commit parallax
+parallax validate
+second="$(parallax apply --config-only)"
+printf "%s\n" "$second"
+changed="$(sha256sum /etc/parallax/generated/active.json | cut -d " " -f1)"
+test "$changed" != "$original"
+test "$(parallax history | grep -c "^rev-")" -ge 2
+uci set parallax.main.default_outbound=missingoutbound
+uci commit parallax
+if parallax apply --config-only >/dev/null 2>&1; then
+    echo "FAIL: invalid outbound was accepted" >&2
+    exit 1
+fi
+test "$(sha256sum /etc/parallax/generated/active.json | cut -d " " -f1)" = "$changed"
+uci set parallax.main.default_outbound=direct
+uci commit parallax
+parallax rollback "$rev"
+test "$(sha256sum /etc/parallax/generated/active.json | cut -d " " -f1)" = "$original"
+test -z "$(pidof sing-box || true)"
+echo "PASS: validated config-only apply/history/diff/rollback, no sing-box daemon"
+' | tee "$REPORT/config-only-transaction.log"
+
 # Protected LuCI pages require an authenticated session: an anonymous
 # request returns HTTP 403 + X-LuCI-Login-Required by design.
 send "$WORK/web-password" /tmp/parallax-ci-web-password
@@ -163,6 +208,8 @@ for stage in after-install after-remove; do
  rm -f "$WORK/config-$stage/parallax"
  diff -ruN "$REPORT/before/config" "$WORK/config-$stage" >"$REPORT/other-config-$stage.txt"
  diff -u "$REPORT/before/nft-static.txt" "$REPORT/$stage/nft-static.txt"
+ diff -u "$REPORT/before/routes-v4.txt" "$REPORT/$stage/routes-v4.txt"
+ diff -u "$REPORT/before/rules-v4.txt" "$REPORT/$stage/rules-v4.txt"
 done
 if guest 'ubus list parallax' >/dev/null 2>&1; then echo "FAIL: ubus object remains"; exit 1; fi
 echo "PASS QEMU KVM" | tee "$REPORT/PASS.txt"
