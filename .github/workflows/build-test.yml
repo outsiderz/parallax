@@ -112,7 +112,9 @@ jobs:
           CONFIG
           make defconfig 2>&1 | tee "$REPORT_DIR/sdk-defconfig.log"
           grep -E '^CONFIG_PACKAGE_(parallax|luci-app-parallax|luci-i18n-parallax-ru)=' .config | tee "$REPORT_DIR/package-selection.txt"
-          grep -q '^CONFIG_PACKAGE_parallax=m
+          grep -Eq '^CONFIG_PACKAGE_parallax=[my]$' .config
+          grep -Eq '^CONFIG_PACKAGE_luci-app-parallax=[my]$' .config
+          grep -Eq '^CONFIG_PACKAGE_luci-i18n-parallax-ru=[my]$' .config
           make -j2 package/parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-parallax.log"
           # luci.mk generates luci-i18n-parallax-ru from po/ru/parallax.po.
           make -j2 package/luci-app-parallax/compile V=s 2>&1 | tee "$REPORT_DIR/build-luci.log"
