@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 set -euo pipefail
-: "SDK_FILE" "IMAGE_FILE" "DOWNLOAD_DIR"
+: "${SDK_FILE:?}" "${IMAGE_FILE:?}" "${DOWNLOAD_DIR:?}"
 cd "$DOWNLOAD_DIR"
 for file in "$SDK_FILE" "$IMAGE_FILE"; do
   # OpenWrt sha256sums uses the valid GNU binary marker '*filename'.
