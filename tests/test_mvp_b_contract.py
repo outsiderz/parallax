@@ -36,6 +36,7 @@ class MVPBContract(unittest.TestCase):
         self.assertIn("popen([ '/bin/busybox', 'sha256sum', path ], 'r')", txn)
         self.assertNotIn("popen([ 'sha256sum', path ], 'r')", txn)
         self.assertIn('tests/ucode_digest.uc', smoke)
+        self.assertIn("system([ '/bin/busybox', 'sync' ], 10000)", txn)
         self.assertIn('ucode /tmp/parallax-digest.uc', smoke)
 
     def test_transaction_manager_safety(self):

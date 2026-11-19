@@ -71,7 +71,7 @@ function stage(data, name) {
     return file;
 }
 function syncDisk() {
-    if (system([ 'sync' ], 10000) != 0)
+    if (system([ '/bin/busybox', 'sync' ], 10000) != 0)
         fail('cannot synchronize filesystem');
 }
 function publish(data, name) {
