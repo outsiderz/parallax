@@ -131,6 +131,19 @@ for n in $(seq 1 30); do
 done
 test "$READY" = 1
 guest 'ubus -v list parallax' | tee "$REPORT/ubus-list.log"
+# Native ucode ubus validates method arguments strictly. The HTTP /ubus
+# gateway injects ubus_rpc_session; ensure both read-only methods accept it.
+# The all-zero SID here is only an argument-shape fixture on a local root CLI.
+guest 'set -eu
+echo "CHECK: ubus method policy accepts injected ubus_rpc_session string"
+ubus call parallax status "{\"ubus_rpc_session\":\"00000000000000000000000000000000\"}"
+ubus call parallax ping "{\"ubus_rpc_session\":\"00000000000000000000000000000000\"}"
+if ubus call parallax status "{\"unexpected\":\"value\"}" >/dev/null 2>&1; then
+    echo "FAIL: unexpected ubus argument was accepted" >&2
+    exit 1
+fi
+echo "PASS: status/ping accept injected SID; unknown parameter rejected"
+' 2>&1 | tee "$REPORT/ubus-session-argument.log"
 guest "ubus call parallax status '{}'" | tee "$REPORT/status.log"
 guest "ubus call parallax ping '{}'" | tee "$REPORT/ping.log"
 guest 'parallax status' | tee "$REPORT/cli-status.log"

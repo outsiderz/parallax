@@ -39,6 +39,9 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("routing_active: false",code)
         self.assertIn("status: {",code)
         self.assertIn("ping: {",code)
+        # uhttpd-mod-ubus forwards a SID to the ubus handler on HTTP calls.
+        # Each method must explicitly declare it or ucode rejects the request.
+        self.assertEqual(code.count("args: { ubus_rpc_session: '' }"), 2)
 
     def test_luci_acl(self):
         acl=json.loads((ROOT/"luci-app-parallax/root/usr/share/rpcd/acl.d/luci-app-parallax.json").read_text())

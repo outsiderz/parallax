@@ -36,9 +36,17 @@ if (!connection)
 
 const published = connection.publish('parallax', {
     status: {
+        // uhttpd-mod-ubus injects ubus_rpc_session into HTTP /ubus calls.
+        // The native ucode ubus method validator rejects undeclared arguments.
+        // Declare this transport-only string; handlers remain read-only.
+        args: { ubus_rpc_session: '' },
         call: (req, msg) => req.reply(status())
     },
     ping: {
+        // uhttpd-mod-ubus injects ubus_rpc_session into HTTP /ubus calls.
+        // The native ucode ubus method validator rejects undeclared arguments.
+        // Declare this transport-only string; handlers remain read-only.
+        args: { ubus_rpc_session: '' },
         call: (req, msg) => req.reply({ ok: true, name: 'parallax', phase: 'mvp-b' })
     }
 });
