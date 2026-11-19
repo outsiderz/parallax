@@ -356,11 +356,39 @@ if ubus list parallax >/dev/null 2>&1; then
 fi
 echo "PASS: reinstall retained enabled=1 UCI, but daemon and autostart remain disabled"
 ' 2>&1 | tee "$REPORT/reinstall-stopped.log"
+# procd starts the daemon asynchronously. Wait for a live ubus reply
+# after explicit admin start instead of racing registration with ubusd.
 guest 'set -eu
+echo "COMMAND: /etc/init.d/parallax enable"
 /etc/init.d/parallax enable
-/etc/init.d/parallax start
-ubus call parallax ping "{}"
-echo "PASS: explicit administrator enable+start succeeds after reinstall"
+/etc/init.d/parallax enabled || { echo "FAIL: explicit enable did not create rc.d links"; exit 1; }
+echo "COMMAND: /etc/init.d/parallax start"
+/etc/init.d/parallax start || { echo "FAIL: explicit start command failed"; exit 1; }
+ready=0
+for attempt in $(seq 1 30); do
+  if ubus list parallax >/dev/null 2>&1 &&
+     ubus call parallax ping "{}" >/tmp/parallax-reinstall-ping.json 2>/tmp/parallax-reinstall-ping.err; then
+    ready=1
+    echo "READY: parallax ubus registered and ping answered (poll=$attempt)"
+    cat /tmp/parallax-reinstall-ping.json
+    break
+  fi
+  sleep 1
+done
+if [ "$ready" -ne 1 ]; then
+  echo "FAIL: explicitly started daemon did not register ubus within 30 seconds"
+  echo "DIAGNOSTIC: procd service status"
+  /etc/init.d/parallax status || :
+  echo "DIAGNOSTIC: ping error"
+  cat /tmp/parallax-reinstall-ping.err 2>/dev/null || :
+  echo "DIAGNOSTIC: recent system messages"
+  logread | tail -n 35 || :
+  exit 1
+fi
+ok="$(jsonfilter -i /tmp/parallax-reinstall-ping.json -e "@.ok" 2>/dev/null || :)"
+[ "$ok" = true ] || { echo "FAIL: ping did not return ok=true"; exit 1; }
+ubus call parallax status "{}"
+echo "PASS: explicit administrator enable+start succeeds after reinstall (ubus ready)"
 ' 2>&1 | tee "$REPORT/reinstall-explicit-start.log"
 guest 'set -eu
 echo "COMMAND: parallax purge --confirm-delete-all"
