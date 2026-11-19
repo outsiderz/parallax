@@ -1,0 +1,35 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ru\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
+
+msgid "Parallax"
+msgstr "Parallax"
+
+msgid "Service is stopped or unavailable"
+msgstr "Сервис остановлен или недоступен"
+
+msgid "Daemon: running"
+msgstr "Демон: работает"
+
+msgid "Version: "
+msgstr "Версия: "
+
+msgid "Phase: "
+msgstr "Этап: "
+
+msgid "Heartbeat: "
+msgstr "Циклы heartbeat: "
+
+msgid "Routing: disabled in MVP-a"
+msgstr "Маршрутизация: отключена на этапе MVP (а)"
+
+msgid "Proxy: not started in MVP-a"
+msgstr "Прокси: не запущен на этапе MVP (а)"
+
+msgid "MVP-a is a read-only scaffold. No routing, DNS or firewall changes are made."
+msgstr "MVP (а) — каркас только для просмотра. Маршрутизация, DNS и firewall не изменяются."
+
+msgid "Enable the status service from SSH after validating the platform and configuration."
+msgstr "После проверки платформы и конфигурации включите статусный сервис через SSH."

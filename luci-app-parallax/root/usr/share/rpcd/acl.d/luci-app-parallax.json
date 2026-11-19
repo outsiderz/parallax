@@ -1,0 +1,13 @@
+{
+  "luci-app-parallax": {
+    "description": "Parallax MVP-a: read-only status",
+    "read": {
+      "ubus": {
+        "parallax": [
+          "status",
+          "ping"
+        ]
+      }
+    }
+  }
+}

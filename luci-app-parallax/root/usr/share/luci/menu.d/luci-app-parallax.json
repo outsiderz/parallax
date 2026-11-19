@@ -1,0 +1,15 @@
+{
+  "admin/services/parallax": {
+    "title": "Parallax",
+    "order": 65,
+    "action": {
+      "type": "view",
+      "path": "parallax/overview"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-parallax"
+      ]
+    }
+  }
+}
