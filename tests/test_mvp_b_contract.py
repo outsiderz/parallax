@@ -29,6 +29,16 @@ class MVPBContract(unittest.TestCase):
         self.assertIn('sing-box check -c "$candidate" >/dev/null 2>&1', source)
         self.assertIn('rm -f "$candidate"', source)
 
+    def test_transaction_manager_safety(self):
+        path = ROOT / 'parallax/files/usr/share/parallax/transaction.sh'
+        self.assertEqual(subprocess.run(['sh', '-n', str(path)]).returncode, 0)
+        source = path.read_text()
+        for token in ['flock -x -w 15 9', 'chmod 0600', 'mv -f "$live" "$ACTIVE"',
+                      'sing-box check -c "$1" >/dev/null 2>&1', 'MAX_REVISIONS=10']:
+            self.assertIn(token, source)
+        for forbidden in ['nft add', 'ip route add', 'sing-box run', 'uci commit']:
+            self.assertNotIn(forbidden, source)
+
     def test_config_only_explicit(self):
         text = (ROOT / 'parallax/files/etc/config/parallax').read_text()
         self.assertIn("option apply_mode 'config_only'", text)

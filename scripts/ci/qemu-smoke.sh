@@ -179,6 +179,60 @@ test -z "$(pidof sing-box || true)"
 echo "PASS: validated config-only apply/history/diff/rollback, no sing-box daemon"
 ' | tee "$REPORT/config-only-transaction.log"
 
+# Validate a synthetic VLESS/Reality outbound with the real installed sing-box.
+# The test keypair is created within disposable QEMU, never printed or uploaded.
+guest 'set -eu
+mkdir -p /etc/parallax/credentials
+chmod 0700 /etc/parallax/credentials
+printf "%s\n" "{\"uuid\":\"00000000-0000-4000-8000-000000000001\"}" > /etc/parallax/credentials/ci_profile.json
+chmod 0600 /etc/parallax/credentials/ci_profile.json
+keys="$(sing-box generate reality-keypair)"
+public="$(printf "%s\n" "$keys" | awk "/^PublicKey:/ {print \$2}")"
+test "$(printf "%s" "$public" | wc -c)" = 43
+unset keys
+uci set parallax.ci_profile=profile
+uci set parallax.ci_profile.enabled=1
+uci set parallax.ci_profile.protocol=vless
+uci set parallax.ci_profile.server=example.net
+uci set parallax.ci_profile.port=443
+uci set parallax.ci_profile.credential_ref=ci_profile
+uci set parallax.ci_profile.tls_sni=example.net
+uci set parallax.ci_profile.reality_public_key="$public"
+uci set parallax.ci_profile.reality_short_id=01234567
+uci set parallax.ci_profile.utls_fingerprint=chrome
+uci set parallax.ci_rule.outbound=ci_profile
+uci commit parallax
+parallax validate
+out="$(parallax apply --config-only)"
+printf "%s\n" "$out"
+before="$(sha256sum /etc/parallax/generated/active.json | cut -d " " -f1)"
+chmod 0644 /etc/parallax/credentials/ci_profile.json
+if parallax validate >/dev/null 2>&1; then
+    echo "FAIL: insecure credential permissions accepted" >&2
+    exit 1
+fi
+chmod 0600 /etc/parallax/credentials/ci_profile.json
+if parallax history | grep -q 00000000-0000-4000-8000-000000000001; then
+    echo "FAIL: credential leaked through history" >&2
+    exit 1
+fi
+uci set parallax.ci_profile.credential_ref=missing_secret
+uci commit parallax
+if parallax apply --config-only >/dev/null 2>&1; then
+    echo "FAIL: missing credentials accepted" >&2
+    exit 1
+fi
+test "$(sha256sum /etc/parallax/generated/active.json | cut -d " " -f1)" = "$before"
+uci delete parallax.ci_profile
+uci set parallax.ci_rule.outbound=direct
+uci commit parallax
+rm -f /etc/parallax/credentials/ci_profile.json
+parallax validate
+test -z "$(pidof sing-box || true)"
+echo "PASS: real VLESS Reality check, credentials fail-closed and no leaks"
+' | tee "$REPORT/vless-reality-validation.log"
+
+
 # Protected LuCI pages require an authenticated session: an anonymous
 # request returns HTTP 403 + X-LuCI-Login-Required by design.
 send "$WORK/web-password" /tmp/parallax-ci-web-password
