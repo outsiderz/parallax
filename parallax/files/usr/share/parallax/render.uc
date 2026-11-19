@@ -27,7 +27,7 @@ function validHost(value) {
     let labels = split(value, '.');
     for (let label in labels)
         if (length(label) < 1 || length(label) > 63 ||
-            match(label, /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/) == null)
+            match(label, /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/) == null)
             return false;
 
     return true;

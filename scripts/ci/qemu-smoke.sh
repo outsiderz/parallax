@@ -130,6 +130,10 @@ guest "ubus call parallax ping '{}'" | tee "$REPORT/ping.log"
 guest 'parallax status' | tee "$REPORT/cli-status.log"
 send "$GITHUB_WORKSPACE/tests/ucode_runtime.uc" /tmp/ucode_runtime.uc
 guest 'ucode /tmp/ucode_runtime.uc' | tee "$REPORT/ucode.log"
+# MVP-b config-only candidate: it must be private and contain NO listeners.
+guest 'set -eu; result="$(parallax render)"; case "$result" in "Candidate written privately: /run/parallax/candidate."*) ;; *) exit 1 ;; esac; candidate="${result##* }"; test -f "$candidate"; test "$(stat -c %a "$candidate")" = 600; cp "$candidate" /tmp/parallax-candidate.json; rm -f "$candidate"'
+send "$GITHUB_WORKSPACE/tests/ucode_render.uc" /tmp/ucode_render.uc
+guest 'ucode /tmp/ucode_render.uc; rm -f /tmp/parallax-candidate.json' | tee "$REPORT/ucode-render.log"
 # Protected LuCI pages require an authenticated session: an anonymous
 # request returns HTTP 403 + X-LuCI-Login-Required by design.
 send "$WORK/web-password" /tmp/parallax-ci-web-password
