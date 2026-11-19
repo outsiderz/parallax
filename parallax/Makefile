@@ -46,9 +46,9 @@ endef
 # The custom prerm runs after default_prerm; postinst after default_postinst.
 define Package/parallax/prerm
 #!/bin/sh
-[ -n "${IPKG_INSTROOT}" ] && exit 0
-[ "${PKG_UPGRADE}" = "1" ] && exit 0
-if [ "$(uci -q get parallax.main.enabled 2>/dev/null)" = "1" ]; then
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+[ "$${PKG_UPGRADE}" = "1" ] && exit 0
+if [ "$$(uci -q get parallax.main.enabled 2>/dev/null)" = "1" ]; then
 	[ ! -L /etc/parallax ] || exit 1
 	umask 077
 	mkdir -p /etc/parallax || exit 1
@@ -64,7 +64,7 @@ endef
 # A later explicit /etc/init.d/parallax enable + start remains supported.
 define Package/parallax/postinst
 #!/bin/sh
-[ -n "${IPKG_INSTROOT}" ] && exit 0
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
 if [ -f /etc/parallax/.reinstall-stopped ]; then
 	/etc/init.d/parallax stop || :
 	/etc/init.d/parallax disable || exit 1

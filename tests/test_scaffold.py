@@ -22,6 +22,9 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("define Package/parallax/postinst", core)
         self.assertIn(".reinstall-stopped", core)
         self.assertIn("PKG_RELEASE:=2", core)
+        self.assertIn('$${IPKG_INSTROOT}', core)
+        self.assertIn('$${PKG_UPGRADE}', core)
+        self.assertIn('$$(uci -q get parallax.main.enabled', core)
 
     def test_shell_syntax(self):
         for file in ["parallax/files/etc/init.d/parallax",
