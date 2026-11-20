@@ -17,7 +17,7 @@ cleanup() {
     mv -f "$TMP/last-good.ref" "$STORE/last-good.ref"
   fi
   parallax singbox stop >/dev/null 2>&1 || :
-  if [ -f "$TMP/native-uci.orig" ]; then native_restore; fi
+  if [ -f "$TMP/native-uci.orig" ] && [ -f "$TMP/native-json.orig" ]; then native_restore; fi
   rm -rf "$TMP"
 }
 trap cleanup EXIT
@@ -88,6 +88,8 @@ printf '%s\n' "$native_ubus" | grep -Eq '"running"[[:space:]]*:[[:space:]]*true'
 }
 native_config_hash="$(sha256sum "$NATIVE_CONF" "$NATIVE_JSON")"
 echo "NATIVE BEFORE: pid=$native_pid socket=127.0.0.1:39081"
+echo "NATIVE BEFORE SHA256:"
+printf "%s\n" "$native_config_hash"
 echo "NATIVE BEFORE: $(printf '%s' "$native_ubus" | tr '\n' ' ' | cut -c 1-900)"
 if parallax singbox start >"$TMP/native-conflict.log" 2>&1; then
   echo 'FAIL: Parallax started while real native sing-box procd service was running'
@@ -115,6 +117,10 @@ grep -Fq '"running": true' "$TMP/native-ubus-after.log" || {
 }
 [ ! -e "$RUN/config.json" ] || { echo 'FAIL: conflict preflight mutated Parallax runtime'; exit 1; }
 echo "NATIVE AFTER: pid=$native_pid socket=127.0.0.1:39081"
+echo "NATIVE AFTER SHA256:"
+sha256sum "$NATIVE_CONF" "$NATIVE_JSON"
+echo "NATIVE AFTER UBUS:"
+cat "$TMP/native-ubus-after.log"
 echo 'PASS: real native sing-box procd/ubus/process detected; PID, config hashes, socket unchanged; Parallax refused'
 native_restore
 
