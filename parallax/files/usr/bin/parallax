@@ -21,8 +21,9 @@ Usage: parallax <command>
   purge --confirm-delete-all   Stop services and delete all Parallax user data
   help        Show this help
 
-MVP-b development branch: render/validate/apply/rollback are CONFIG ONLY.
-No proxy, VPN, nftables, routes or DNS changes.
+MVP-c1: render/validate/apply/rollback remain CONFIG ONLY.
+The separate singbox command starts an inbound-free process manually.
+It never changes firewall, routing, TProxy, TUN or DNS.
 To enable the status daemon: uci set parallax.main.enabled=1;
                               uci commit parallax;
                               /etc/init.d/parallax restart
@@ -61,7 +62,7 @@ make_candidate() {
 
 case "${1:-help}" in
     version)
-        printf 'Parallax %s (MVP-b development)\n' "$VERSION"
+        printf 'Parallax %s (MVP-c1: manual sing-box lifecycle)\n' "$VERSION"
         ;;
     check)
         # shellcheck disable=SC1091

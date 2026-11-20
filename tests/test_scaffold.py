@@ -73,6 +73,8 @@ class ScaffoldTests(unittest.TestCase):
         daemon=(ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()
         self.assertIn("const VERSION = '0.3.0';", daemon)
         self.assertIn("phase: 'mvp-b'", daemon)
+        qemu = (ROOT/"tests/ucode_runtime.uc").read_text()
+        self.assertIn("s.version != '0.3.0'", qemu)
 
 if __name__ == "__main__":
     unittest.main()
