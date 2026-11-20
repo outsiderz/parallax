@@ -6,7 +6,7 @@ import * as uloop from 'uloop';
 import * as ubus from 'ubus';
 import { cursor } from 'uci';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 let heartbeat_seq = 0;
 
 function status() {

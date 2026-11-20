@@ -137,6 +137,26 @@ jobs:
             "$ARTIFACT_DIR" "$REPORT_DIR/qemu" \
             2>&1 | tee "$REPORT_DIR/qemu-smoke.log"
 
+      - name: MVP-c1 separate rootless procd and zero-network-diff gate
+        run: |
+          set -euo pipefail
+          test -s "$REPORT_DIR/qemu/mvp-c1-PASS.txt"
+          grep -Fq 'PASS: MVP-c1 QEMU' "$REPORT_DIR/qemu/mvp-c1-PASS.txt"
+          for invariant in nft-static routes-v4 rules-v4 routes-v6 rules-v6 resolv-conf resolv-auto; do
+            test -f "$REPORT_DIR/qemu/mvp-c1-$invariant-diff.txt"
+            test ! -s "$REPORT_DIR/qemu/mvp-c1-$invariant-diff.txt"
+          done
+          test -f "$REPORT_DIR/qemu/mvp-c1-uci-diff.txt"
+          test ! -s "$REPORT_DIR/qemu/mvp-c1-uci-diff.txt"
+          grep -Fq 'PASS: real native sing-box procd/ubus/process detected' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: positive control without running native sing-box' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: native service is stopped and disabled; configs restored before positive control' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: native sing-box still stopped/disabled with original configs after all MVP-c1 subtests' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: kill -9 recovered' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: invalid active config falls back' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: apk del leaves no parallax-singbox' "$REPORT_DIR/qemu/mvp-c1-remove.log"
+          echo 'PASS: independently gated MVP-c1 QEMU evidence and zero network diffs'
+
       - name: Upload built APKs
         if: always()
         uses: actions/upload-artifact@v4

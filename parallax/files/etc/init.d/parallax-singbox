@@ -1,0 +1,45 @@
+#!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: MIT
+# Manual-only procd instance. Never uses /etc/init.d/sing-box.
+START=97
+STOP=05
+USE_PROCD=1
+
+registered() {
+    local response
+    response="$(ubus call service list '{"name":"parallax-singbox"}' 2>&1)" || {
+        echo "Parallax singbox procd lookup failed: $response" >&2
+        return 2
+    }
+    case "$response" in
+        *'"parallax-singbox"'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+case "${action:-}" in
+    stop|shutdown)
+        if registered; then
+            :
+        else
+            rc=$?
+            [ "$rc" = 1 ] && unset USE_PROCD
+        fi
+        ;;
+esac
+
+start_service() {
+    # The package manager may call start automatically on installation.
+    # Without this volatile root-only marker the service ALWAYS stays off.
+    [ -f /run/parallax-singbox/requested ] || return 0
+    [ ! -L /run/parallax-singbox/requested ] || return 1
+    /usr/share/parallax/singbox.sh prepare || return 1
+
+    procd_open_instance
+    procd_set_param command /usr/bin/sing-box run -c /run/parallax-singbox/config.json
+    procd_set_param user parallax-sb
+    procd_set_param group parallax-sb
+    procd_set_param respawn 3600 5 3
+    procd_set_param stdout 0
+    procd_set_param stderr 0
+    procd_close_instance
+}

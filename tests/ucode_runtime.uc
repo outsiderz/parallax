@@ -18,7 +18,7 @@ if (!conn)
 
 const s = conn.call('parallax', 'status', {});
 if (!s || s.name != 'parallax' || s.phase != 'mvp-b' ||
-    s.version != '0.2.0' || s.daemon_running != true || s.routing_active != false ||
+    s.version != '0.3.0' || s.daemon_running != true || s.routing_active != false ||
     s.proxy_running != false || s.config_enabled != true)
     die('FAIL: invalid ubus status\n');
 
