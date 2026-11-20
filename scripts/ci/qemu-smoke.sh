@@ -141,9 +141,9 @@ for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
 done
 # Validate all three APKs use exactly the same release string.
 for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
-  count="$(find "$PACKAGES" -maxdepth 1 -name "$name-0.2.0-r3.apk" | wc -l)"
-  test "$count" -eq 1 || { echo "FAIL: wrong APK version for $name (expected 0.2.0-r3)"; exit 1; }
-  echo "PASS: package $name version 0.2.0-r3"
+  count="$(find "$PACKAGES" -maxdepth 1 -name "$name-0.3.0-r1.apk" | wc -l)"
+  test "$count" -eq 1 || { echo "FAIL: wrong APK version for $name (expected 0.3.0-r1)"; exit 1; }
+  echo "PASS: package $name version 0.3.0-r1"
 done
 for f in "$PACKAGES"/*.apk; do send "$f" /tmp/; done
 guest 'apk add --allow-untrusted /tmp/parallax-*.apk /tmp/luci-app-parallax-*.apk /tmp/luci-i18n-parallax-ru-*.apk' | tee "$REPORT/install.log"
@@ -373,6 +373,22 @@ for n in $(seq 1 35); do
 done
 test -n "$NEW" && test "$NEW" != "$OLD"
 echo "old=$OLD new=$NEW" | tee "$REPORT/respawn.log"
+# Separate MVP-c1 gate: all probes execute inside this disposable QEMU guest.
+# The new package has no network-state ownership: every network diff is empty.
+snap c1-before
+send "$GITHUB_WORKSPACE/tests/mvp_c1_guest.sh" /tmp/parallax-mvp-c1-guest.sh
+guest 'sh /tmp/parallax-mvp-c1-guest.sh' 2>&1 | tee "$REPORT/mvp-c1-gate.log"
+snap c1-after
+for invariant in nft-static routes-v4 rules-v4 routes-v6 rules-v6 resolv-conf resolv-auto; do
+  diff -u "$REPORT/c1-before/$invariant.txt" "$REPORT/c1-after/$invariant.txt" > "$REPORT/mvp-c1-$invariant-diff.txt" || {
+    echo "FAIL: MVP-c1 modified $invariant"
+    exit 1
+  }
+done
+# The process started and stopped without modifying other UCI config.
+diff -ruN "$REPORT/c1-before/config" "$REPORT/c1-after/config" >"$REPORT/mvp-c1-uci-diff.txt"
+echo "PASS: MVP-c1 QEMU, rootless procd, security, respawn, zero nft/routes/ip rule/DNS/fw4 diff" |
+  tee "$REPORT/mvp-c1-PASS.txt"
 snap after-install
 guest 'set -eu
 /etc/init.d/parallax stop
@@ -399,6 +415,7 @@ for stage in after-install after-remove; do
  done
 done
 if guest 'ubus list parallax' >/dev/null 2>&1; then echo "FAIL: ubus object remains"; exit 1; fi
+guest 'test ! -e /run/parallax-singbox/config.json; if /etc/init.d/parallax-singbox enabled >/dev/null 2>&1; then echo "FAIL: c1 package removal left autostart"; exit 1; fi; echo "PASS: apk del leaves no parallax-singbox runtime or boot autostart"' | tee "$REPORT/mvp-c1-remove.log"
 # Normal apk removal must preserve edited UCI conffile and private user data.
 guest 'set -eu
 test -f /etc/config/parallax
