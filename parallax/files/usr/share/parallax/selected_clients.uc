@@ -63,4 +63,4 @@ export function inspectSelected(sections, exactCount) {
     if (exactCount != null && length(selected) != exactCount)
         die('parallax-selected: exactly one enabled selected_client required\n');
     return selected;
-}
+};
