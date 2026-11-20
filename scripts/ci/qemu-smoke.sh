@@ -125,12 +125,28 @@ for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
  count="$(find "$PACKAGES" -maxdepth 1 -name "$name-*.apk" | wc -l)"
  test "$count" -eq 1 || { echo "FAIL: missing $name"; exit 1; }
 done
+# Validate all three APKs use exactly the same release string.
+for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
+  count="$(find "$PACKAGES" -maxdepth 1 -name "$name-0.2.0-r3.apk" | wc -l)"
+  test "$count" -eq 1 || { echo "FAIL: wrong APK version for $name (expected 0.2.0-r3)"; exit 1; }
+  echo "PASS: package $name version 0.2.0-r3"
+done
 for f in "$PACKAGES"/*.apk; do send "$f" /tmp/; done
 guest 'apk add --allow-untrusted /tmp/parallax-*.apk /tmp/luci-app-parallax-*.apk /tmp/luci-i18n-parallax-ru-*.apk' | tee "$REPORT/install.log"
 guest 'parallax check' | tee "$REPORT/check.log"
 # Verify native ucode-mod-digest SHA256 with OpenWrt filesystem; no external sha256sum process.
 send "$GITHUB_WORKSPACE/tests/ucode_digest.uc" /tmp/parallax-digest.uc
 guest 'ucode /tmp/parallax-digest.uc' | tee "$REPORT/ucode-digest.log"
+# A second stop when no Parallax service is registered must be silent.
+guest 'set -eu
+/etc/init.d/parallax stop
+/etc/init.d/parallax stop
+echo "PASS: repeated stop on unregistered service is silent"
+' 2>&1 | tee "$REPORT/stop-idempotence.log"
+if grep -Fq 'Command failed: ubus call service delete' "$REPORT/stop-idempotence.log"; then
+  echo "FAIL: repeated stop emitted redundant procd delete"
+  exit 1
+fi
 guest 'uci set parallax.main.enabled=1; uci commit parallax; /etc/init.d/parallax enable; /etc/init.d/parallax restart' | tee "$REPORT/start.log"
 READY=0
 for n in $(seq 1 30); do
@@ -154,6 +170,22 @@ echo "PASS: status/ping accept injected SID; unknown parameter rejected"
 ' 2>&1 | tee "$REPORT/ubus-session-argument.log"
 guest "ubus call parallax status '{}'" | tee "$REPORT/status.log"
 guest "ubus call parallax ping '{}'" | tee "$REPORT/ping.log"
+# An event-loop timer ticks each 10s; compare two ubus snapshots 18s apart.
+guest 'set -eu
+first="$(ubus call parallax status "{}" | jsonfilter -e "@.heartbeat_seq")"
+echo "CHECK: first heartbeat_seq=$first"
+sleep 18
+second="$(ubus call parallax status "{}" | jsonfilter -e "@.heartbeat_seq")"
+echo "CHECK: second heartbeat_seq=$second after 18 seconds"
+case "$first:$second" in
+  *[!0-9:]*|:*|*:) echo "FAIL: invalid heartbeat counters"; exit 1 ;;
+esac
+if [ "$second" -le "$first" ]; then
+  echo "FAIL: heartbeat_seq did not advance over 18 seconds"
+  exit 1
+fi
+echo "PASS: heartbeat_seq increased over 18 seconds"
+' 2>&1 | tee "$REPORT/heartbeat.log"
 guest 'parallax status' | tee "$REPORT/cli-status.log"
 send "$GITHUB_WORKSPACE/tests/ucode_runtime.uc" /tmp/ucode_runtime.uc
 guest 'ucode /tmp/ucode_runtime.uc' | tee "$REPORT/ucode.log"
@@ -324,7 +356,16 @@ done
 test -n "$NEW" && test "$NEW" != "$OLD"
 echo "old=$OLD new=$NEW" | tee "$REPORT/respawn.log"
 snap after-install
-guest '/etc/init.d/parallax stop; /etc/init.d/parallax disable; apk del luci-i18n-parallax-ru luci-app-parallax parallax' | tee "$REPORT/remove.log"
+guest 'set -eu
+/etc/init.d/parallax stop
+/etc/init.d/parallax stop
+/etc/init.d/parallax disable
+apk del luci-i18n-parallax-ru luci-app-parallax parallax
+' 2>&1 | tee "$REPORT/remove.log"
+if grep -Fq 'Command failed: ubus call service delete' "$REPORT/remove.log"; then
+  echo "FAIL: apk del emitted redundant procd delete"
+  exit 1
+fi
 snap after-remove
 for stage in after-install after-remove; do
  diff -ruN "$REPORT/before/config" "$REPORT/$stage/config" >"$REPORT/config-diff-$stage.txt" || :
@@ -445,5 +486,9 @@ test ! -e /etc/config/parallax
 test ! -e /etc/parallax
 echo "PASS: explicit purge removes UCI, credentials and revisions; apk del leaves nothing"
 ' 2>&1 | tee "$REPORT/purge.log"
+if grep -Fq 'Command failed: ubus call service delete' "$REPORT/purge.log"; then
+  echo "FAIL: purge emitted redundant procd delete"
+  exit 1
+fi
 
 echo "PASS QEMU KVM" | tee "$REPORT/PASS.txt"

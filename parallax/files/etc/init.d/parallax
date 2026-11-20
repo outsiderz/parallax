@@ -2,6 +2,26 @@
 # SPDX-License-Identifier: MIT
 
 USE_PROCD=1
+
+# rc.common normally calls procd_kill on every stop, even after the service
+# has been unregistered. The default package prerm and explicit purge can
+# both encounter this state. Skip ONLY the redundant delete when the ubus
+# registry query succeeds and confirms that Parallax is absent.
+# Keep normal procd error handling when the registry query itself fails.
+case "${action:-}" in
+    stop|shutdown)
+        if parallax_procd_entries="$(ubus call service list '{"name":"parallax"}' 2>&1)"; then
+            case "$parallax_procd_entries" in
+                *'"parallax"'*) ;;
+                *) unset USE_PROCD ;;
+            esac
+        else
+            printf 'Parallax: procd service lookup failed: %s\n' "$parallax_procd_entries" >&2
+        fi
+        unset parallax_procd_entries
+        ;;
+esac
+
 START=95
 STOP=10
 
