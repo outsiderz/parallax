@@ -113,3 +113,46 @@ After exhaustion, the read-only `parallax status` reports `phase: mvp-c1` and `s
 ## MVP-c1: release 0.3.1 version matrix
 
 All three packages must share the exact release `0.3.1-r1`: `parallax`, `luci-app-parallax`, and the generated `luci-i18n-parallax-ru` package (built by `luci.mk` from the LuCI translation `po/ru/parallax.po`). The QEMU build checks the resulting three APK filenames and emits `package-version-consistency.log`; host tests also compare Makefile versions with the CLI, daemon and installed version file.
+
+
+## MVP-c2a-0 — strictly offline schema migration and diagnostic preflight
+
+MVP-c2a-0 does **not** provide net enable, TProxy, nftables, ip rule, routes,
+conntrack manipulation, DHCP writes or DNS changes. Its read-only preflight
+cannot make a selected client use the proxy, even if all diagnostics pass.
+
+Only root may perform the **separate offline UCI migration** after explicitly
+disabling the config daemon and stopping the isolated Parallax sing-box.
+The original version-2 config is protected under
+/etc/parallax/generated/schema-v2.backup with 0600 permissions until rollback.
+On a failure, the original file is restored. This is the only persistent write
+operation in this stage, and it changes UCI **not kernel networking state**.
+
+~~~sh
+uci set parallax.main.enabled=0
+uci commit parallax
+parallax singbox stop
+parallax schema migrate-v3
+# Root manually adds selected_client sections through uci and commits.
+parallax check
+parallax net preflight
+# If returning to schema v2 is required:
+parallax schema rollback-v2
+~~~
+
+The future v3 selected_client section has exact enabled, mac, ipv4, interface
+and binding_proof options. Proof local_lease needs authoritative local DHCP
+plus a live REACHABLE neighbour. Proof admin_static is a root declaration of
+static reservation at an external DHCP server, **plus** a live REACHABLE
+neighbour on the intended ingress interface. Stale, conflicting or missing
+evidence refuses preflight. No probes that mutate neighbour cache are issued.
+The preflight also rejects management SSH peers, unknown fw4/flowtable or mark
+ownership, routing-table conflicts and a running native sing-box. It never
+stops the native service. Lua/LuCI/rpcd do not get migration or preflight
+write privileges.
+
+QEMU compares kernel nft/rules/routes, resolver files and all UCI conffiles
+before and after test, requiring empty diffs. Binding corner cases use
+**synthetic in-memory fixture observations** for the pure parser and are
+explicitly not counted as real L2 neighbour discovery. A live preflight must
+reject unverified neighbours. Passing MVP-c2a-0 does not authorize net enable.

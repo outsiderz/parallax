@@ -31,7 +31,12 @@ class ScaffoldTests(unittest.TestCase):
     def test_shell_syntax(self):
         for file in ["parallax/files/etc/init.d/parallax",
                      "parallax/files/usr/bin/parallax",
-                     "parallax/files/usr/share/parallax/platform.sh"]:
+                     "parallax/files/usr/share/parallax/platform.sh",
+                     "parallax/files/usr/share/parallax/net_preflight.sh",
+                     "parallax/files/usr/share/parallax/schema_migrate.sh",
+                     "parallax/files/usr/share/parallax/binding_evidence.sh",
+                     "tests/mvp_c2a0_guest.sh"]:
+
             p=subprocess.run(["sh","-n",str(ROOT/file)])
             self.assertEqual(p.returncode,0)
 

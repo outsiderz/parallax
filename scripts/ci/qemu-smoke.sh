@@ -389,6 +389,24 @@ done
 diff -ruN "$REPORT/c1-before/config" "$REPORT/c1-after/config" >"$REPORT/mvp-c1-uci-diff.txt"
 echo "PASS: MVP-c1 QEMU, rootless procd, security, respawn, zero nft/routes/ip rule/DNS/fw4 diff" |
   tee "$REPORT/mvp-c1-PASS.txt"
+# MVP-c2a-0 is OFFLINE UCI + READ-ONLY preflight: no writes to kernel.
+# Evidence includes raw before/after snapshots and fail-closed binding fixtures.
+snap c2a0-before
+send "$GITHUB_WORKSPACE/tests/mvp_c2a0_guest.sh" /tmp/parallax-mvp-c2a0-guest.sh
+guest 'sh /tmp/parallax-mvp-c2a0-guest.sh' 2>&1 | tee "$REPORT/mvp-c2a0-gate.log"
+snap c2a0-after
+for invariant in nft-static routes-v4 rules-v4 routes-v6 rules-v6 resolv-conf resolv-auto; do
+  diff -u "$REPORT/c2a0-before/$invariant.txt" "$REPORT/c2a0-after/$invariant.txt" > "$REPORT/mvp-c2a0-$invariant-diff.txt" || {
+    echo "FAIL: MVP-c2a-0 changed $invariant"
+    exit 1
+  }
+done
+diff -ruN "$REPORT/c2a0-before/config" "$REPORT/c2a0-after/config" > "$REPORT/mvp-c2a0-uci-diff.txt" || {
+  echo 'FAIL: MVP-c2a-0 did not restore original committed UCI'
+  exit 1
+}
+echo 'PASS: MVP-c2a-0 offline UCI migration and read-only preflight; zero network and final UCI diff' |
+  tee "$REPORT/mvp-c2a0-PASS.txt"
 snap after-install
 guest 'set -eu
 /etc/init.d/parallax stop

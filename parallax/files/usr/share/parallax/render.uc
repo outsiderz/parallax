@@ -3,6 +3,7 @@
 // Never invoke this directly from LuCI/ubus; use the root-only CLI wrapper.
 import { cursor } from 'uci';
 import { readfile, lstat } from 'fs';
+import { inspectSelected } from './selected_clients.uc';
 
 function fail(reason) {
     // Deliberately never include an option value, UUID, path or JSON in errors.
@@ -96,12 +97,16 @@ if (type(sections) != 'object' || type(sections.main) != 'object' ||
 const main = sections.main;
 allowed(main, [ 'schema_version', 'enabled', 'mode', 'apply_mode', 'default_outbound' ]);
 
-if (main.schema_version != '2' || main.mode != 'selective' ||
+if (index([ '2', '3' ], main.schema_version) < 0 || main.mode != 'selective' ||
     main.apply_mode != 'config_only')
     fail('unsupported schema or mode');
 
 if (index([ '0', '1' ], main.enabled) < 0)
     fail('invalid main enabled flag');
+
+// All v3 selected_client sections are checked even for config-only rendering.
+// They never change the generated sing-box JSON in MVP-c2a-0.
+inspectSelected(sections, null);
 
 let profiles = [];
 let tags = { direct: true };
@@ -187,7 +192,7 @@ for (let name in names) {
         tags[name] = true;
         push(profiles, outbound);
     }
-    else if (kind != 'rule') {
+    else if (kind != 'rule' && kind != 'selected_client') {
         fail('unsupported UCI section type');
     }
 }

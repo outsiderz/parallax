@@ -65,6 +65,10 @@ parallax_check_config() {
     case "$default_outbound" in
         ''|*[!a-zA-Z0-9_-]*) echo 'Invalid default_outbound tag' >&2; return 1 ;;
     esac
+    if [ "$schema" = 3 ]; then
+        # Share the same strict selected-client validator as render.uc.
+        /usr/bin/ucode /usr/share/parallax/selected_print.uc validate || return 1
+    fi
     if [ "$mode" != 'selective' ]; then
         echo 'MVP (a) only accepts mode=selective' >&2
         return 1

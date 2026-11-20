@@ -102,6 +102,11 @@ define Package/parallax/install
 	$(INSTALL_DATA) ./files/usr/share/parallax/singbox_gate.uc $(1)/usr/share/parallax/singbox_gate.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/singbox_permissions.uc $(1)/usr/share/parallax/singbox_permissions.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/render.uc $(1)/usr/share/parallax/render.uc
+	$(INSTALL_DATA) ./files/usr/share/parallax/selected_clients.uc $(1)/usr/share/parallax/selected_clients.uc
+	$(INSTALL_DATA) ./files/usr/share/parallax/selected_print.uc $(1)/usr/share/parallax/selected_print.uc
+	$(INSTALL_BIN) ./files/usr/share/parallax/schema_migrate.sh $(1)/usr/share/parallax/schema_migrate.sh
+	$(INSTALL_BIN) ./files/usr/share/parallax/net_preflight.sh $(1)/usr/share/parallax/net_preflight.sh
+	$(INSTALL_BIN) ./files/usr/share/parallax/binding_evidence.sh $(1)/usr/share/parallax/binding_evidence.sh
 	$(INSTALL_DATA) ./files/usr/share/parallax/transaction.uc $(1)/usr/share/parallax/transaction.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/platform.sh $(1)/usr/share/parallax/platform.sh
 	$(INSTALL_DATA) ./files/usr/share/parallax/version $(1)/usr/share/parallax/version
