@@ -66,6 +66,9 @@ class CIChecks(unittest.TestCase):
         self.assertEqual(subprocess.run(["sh", "-n", str(recovery)]).returncode, 0)
         recovery_source = recovery.read_text()
         self.assertIn("sleep 1", recovery_source)
+        self.assertIn("parallax history >/dev/null", recovery_source)
+        self.assertIn("sync interceptor is executable", recovery_source)
+        self.assertIn("sanitized apply error", recovery_source)
         self.assertNotIn("sleep 0.", recovery_source)
         for contract in ["crash_at_sync 1", "crash_at_sync 2",
                          "lock-contention", "history limited to 10",
@@ -73,6 +76,8 @@ class CIChecks(unittest.TestCase):
             self.assertIn(contract, recovery_source)
         holder = (ROOT/"tests/ucode_lock_holder.uc").read_text()
         self.assertIn("lock('xn')", holder)
+        self.assertIn("sleep(20000)", holder)
+        self.assertNotIn("system('sleep", holder)
         self.assertIn("/etc/parallax/generated/.lock", holder)
         self.assertIn("routes-v6.txt", smoke)
         self.assertIn("rules-v6.txt", smoke)

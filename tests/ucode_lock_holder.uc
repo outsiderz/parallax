@@ -11,4 +11,6 @@ if (!ready || ready.write('locked\n') != 7 || !ready.flush() || !ready.close())
     die('LOCK_HOLDER: cannot signal readiness\n');
 
 // Keep the lock handle open until the caller terminates this process.
-system('sleep 20', 30000);
+// Native ucode sleep avoids spawning a child that may inherit the locked fd.
+// The owner must release the lock immediately when killed by the test.
+sleep(20000);

@@ -69,7 +69,19 @@ unchanged lock-contention
 kill "$lock_pid" 2>/dev/null || :
 wait "$lock_pid" 2>/dev/null || :
 lock_pid=
-echo 'PASS: competing apply denied; active hash and history unchanged'
+# Verify lock release before fault injection; a leaking child fd would
+# make the next apply fail before reaching its first sync boundary.
+if ! parallax history >/dev/null 2>"$tmp/released-lock.log"; then
+  echo 'FAIL: transaction lock remained held after lock-owner exit'
+  sed -n '1,8p' "$tmp/released-lock.log"
+  exit 1
+fi
+if ! parallax validate >/dev/null 2>"$tmp/released-validation.log"; then
+  echo 'FAIL: synthetic configuration invalid after releasing test lock'
+  sed -n '1,8p' "$tmp/released-validation.log"
+  exit 1
+fi
+echo 'PASS: competing apply denied; lock released; active hash and history unchanged'
 
 # ucode transaction.uc calls syncDisk twice during publish:
 # 1: before atomic rename(active.json); 2: after rename(active.json).
@@ -100,6 +112,20 @@ exec /bin/sync
 SHIM
 chmod 0700 "$tmp/sync"
 
+# Fail fast when the shell uses a different sync binary or PATH is stripped.
+# The marker proves this exact shim is the one seen by child shells.
+rm -f "$tmp/sync-count" "$tmp/sync-kill-hit"
+if ! PARALLAX_CI_KILL_SYNC_AT=99 PATH="$tmp:$PATH" /bin/sh -c 'sync' >"$tmp/shim-selftest.log" 2>&1; then
+  echo 'FAIL: test-local sync interceptor cannot be executed'
+  sed -n '1,8p' "$tmp/shim-selftest.log"
+  exit 1
+fi
+[ "$(cat "$tmp/sync-count" 2>/dev/null || :)" = 1 ] || {
+  echo 'FAIL: expected test-local sync interceptor did not run'
+  exit 1
+}
+echo 'PASS: sync interceptor is executable and visible through PATH'
+
 crash_at_sync() {
   nth="$1"
   rm -f "$tmp/sync-count" "$tmp/sync-kill-hit"
@@ -109,6 +135,10 @@ crash_at_sync() {
   fi
   [ -f "$tmp/sync-kill-hit" ] || {
     echo "FAIL: SIGKILL fault injection not reached at sync $nth"
+    echo 'DIAGNOSTIC: intercepted sync call count'
+    cat "$tmp/sync-count" 2>/dev/null || echo 0
+    echo 'DIAGNOSTIC: sanitized apply error (QEMU synthetic inputs only)'
+    sed -n '1,8p' "$tmp/interrupted.log" 2>/dev/null || :
     exit 1
   }
   [ "$(cat "$tmp/sync-kill-hit")" = "$nth" ]
