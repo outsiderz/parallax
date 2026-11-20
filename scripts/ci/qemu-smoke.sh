@@ -147,7 +147,7 @@ if grep -Fq 'Command failed: ubus call service delete' "$REPORT/stop-idempotence
   echo "FAIL: repeated stop emitted redundant procd delete"
   exit 1
 fi
-guest 'uci set parallax.main.enabled=1; uci commit parallax; /etc/init.d/parallax enable; /etc/init.d/parallax restart' | tee "$REPORT/start.log"
+guest 'uci set parallax.main.enabled=1; uci commit parallax; /etc/init.d/parallax enable; /etc/init.d/parallax restart' 2>&1 | tee "$REPORT/start.log"
 if grep -Fq 'Command failed: ubus call service delete' "$REPORT/start.log"; then
   echo "FAIL: restart emitted redundant procd delete"
   exit 1
