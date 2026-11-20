@@ -208,6 +208,37 @@ done
 [ "$(awk '/^Uid:/ {print $2}' "/proc/$restarted/status")" = "$uid" ] ||
   { echo 'FAIL: respawn changed UID'; exit 1; }
 echo 'PASS: kill -9 recovered through limited procd respawn with same non-root UID'
+
+# Separate finite-respawn regression: procd respawn 3600 5 3.
+# Kill the process repeatedly before the respawn threshold can reset.
+# The last kill must leave the service stopped for an observation window;
+# if it resurrects forever this test fails.
+echo 'RESPAWN LIMIT: verify the supervisor eventually stops restarting'
+current="$restarted"
+exhausted=0
+for attempt in $(seq 1 8); do
+  kill -9 "$current" 2>/dev/null || :
+  next=''
+  for tick in $(seq 1 15); do
+    sleep 1
+    next="$(parallax singbox status | sed -n 's/^running pid=\\([0-9]*\\).*/\\1/p')"
+    [ -n "$next" ] && [ "$next" != "$current" ] && break
+  done
+  if [ -z "$next" ] || [ "$next" = "$current" ]; then
+    exhausted=1
+    break
+  fi
+  current="$next"
+done
+[ "$exhausted" = 1 ] || { echo 'FAIL: unbounded procd respawn after repeated kill -9'; exit 1; }
+for tick in $(seq 1 12); do
+  sleep 1
+  if parallax singbox status | grep -q '^running '; then
+    echo 'FAIL: sing-box resurrected after respawn was exhausted'; exit 1
+  fi
+done
+echo 'PASS: repeated kill -9 exhausted bounded procd respawn; instance remains stopped'
+
 parallax singbox stop >/dev/null
 parallax singbox status | grep -q '^stopped '
 [ ! -f "$RUN/config.json" ] || { echo 'FAIL: stop left runtime config'; exit 1; }
