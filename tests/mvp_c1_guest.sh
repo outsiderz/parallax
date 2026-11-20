@@ -233,7 +233,7 @@ for attempt in $(seq 1 8); do
   next=''
   for tick in $(seq 1 40); do
     sleep 1
-    observed="$(parallax singbox status | sed -n 's/^running pid=\\([0-9]*\\).*/\\1/p')"
+    observed="$(parallax singbox status | sed -n 's/^running pid=\([0-9]*\).*/\1/p')"
     if [ -n "$observed" ] && [ "$observed" != "$current" ]; then
       next="$observed"
       echo "RESPAWN OBSERVED: cycle=$attempt tick=$tick pid=$next"
