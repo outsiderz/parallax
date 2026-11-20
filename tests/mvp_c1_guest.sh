@@ -41,14 +41,25 @@ NATIVE_JSON=/etc/sing-box/config.json
 [ -f "$NATIVE_CONF" ] && [ -f "$NATIVE_JSON" ] || {
   echo 'FAIL: native sing-box configuration files missing'; exit 1
 }
-# Baseline must be stopped and disabled. If it is not, fail rather than
-# modifying an unexpected pre-existing native service state.
+# The stock sing-box APK may enable its native init script on install.
+# Normalize this disposable QEMU guest, NOT a real router, before the test.
+# Snapshot vendor config first; normalization must not change its bytes.
+echo 'NATIVE PRE-FIXTURE: service autostart and procd state'
 if /etc/init.d/sing-box enabled >/dev/null 2>&1; then
-  echo 'FAIL: native sing-box baseline is boot-enabled'; exit 1
+  echo 'NATIVE PRE-FIXTURE: boot-enabled by package'
+else
+  echo 'NATIVE PRE-FIXTURE: boot-disabled'
+fi
+ubus call service list '{"name":"sing-box","verbose":true}'
+/etc/init.d/sing-box stop
+/etc/init.d/sing-box disable
+if /etc/init.d/sing-box enabled >/dev/null 2>&1; then
+  echo 'FAIL: could not disable native sing-box in disposable QEMU'; exit 1
 fi
 if ubus call service list '{"name":"sing-box","verbose":true}' | grep -Eq '"running"[[:space:]]*:[[:space:]]*true'; then
-  echo 'FAIL: native sing-box baseline is already running'; exit 1
+  echo 'FAIL: could not stop native sing-box in disposable QEMU'; exit 1
 fi
+echo 'PASS: QEMU native sing-box baseline normalized to stopped and disabled'
 cp -p "$NATIVE_CONF" "$TMP/native-uci.orig"
 cp -p "$NATIVE_JSON" "$TMP/native-json.orig"
 native_original_hash="$(sha256sum "$NATIVE_CONF" "$NATIVE_JSON")"
