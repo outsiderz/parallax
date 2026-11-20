@@ -104,6 +104,10 @@ class CIChecks(unittest.TestCase):
         self.assertIn("rules-v6.txt", smoke)
         self.assertIn("resolv-conf.txt", smoke)
         self.assertIn("listening-sockets.txt", smoke)
+        self.assertIn("bound-sockets-raw.txt", smoke)
+        self.assertIn("ephemeral-port-range.txt", smoke)
+        self.assertIn('gawk -v lo="$ephem_lo" -v hi="$ephem_hi"', smoke)
+        self.assertIn("port < lo || port > hi", smoke)
         self.assertIn("symlink marker rejected", smoke)
         negative = ROOT/"tests/negative_validation.sh"
         self.assertTrue(negative.is_file())

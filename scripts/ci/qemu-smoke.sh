@@ -115,9 +115,23 @@ snap() {
  guest 'ip -6 rule show' >"$REPORT/$1/rules-v6.txt"
  guest 'cat /etc/resolv.conf' >"$REPORT/$1/resolv-conf.txt"
  guest 'test ! -f /tmp/resolv.conf.d/resolv.conf.auto || cat /tmp/resolv.conf.d/resolv.conf.auto' >"$REPORT/$1/resolv-auto.txt"
- # Kernel TCP listeners (state 0A) and UDP bound sockets (state 07).
- # Ignore ephemeral established SSH sessions while recording IPv4/IPv6.
- guest 'awk "FNR > 1 && ((FILENAME ~ /tcp/ && \$4 == \"0A\") || (FILENAME ~ /udp/ && \$4 == \"07\")) { print FILENAME, \$2, \$4 }" /proc/net/tcp /proc/net/tcp6 /proc/net/udp /proc/net/udp6 | sort' >"$REPORT/$1/listening-sockets.txt"
+ # Capture all TCP listeners and bound UDP sockets, including short-lived
+ # ephemeral UDP sockets, as forensic evidence. Those may change while the
+ # QEMU guest runs unrelated OpenWrt services and are not stable diff inputs.
+ guest 'awk "FNR > 1 && ((FILENAME ~ /tcp/ && \$4 == \"0A\") || (FILENAME ~ /udp/ && \$4 == \"07\")) { print FILENAME, \$2, \$4 }" /proc/net/tcp /proc/net/tcp6 /proc/net/udp /proc/net/udp6 | sort' >"$REPORT/$1/bound-sockets-raw.txt"
+ guest 'cat /proc/sys/net/ipv4/ip_local_port_range' >"$REPORT/$1/ephemeral-port-range.txt"
+ read -r ephem_lo ephem_hi <"$REPORT/$1/ephemeral-port-range.txt"
+ # Keep every TCP listener and every fixed UDP service port in the diff.
+ # Ignore ONLY dynamic UDP ports inside the kernel ephemeral range. Full
+ # data remains in bound-sockets-raw.txt. gawk exists on the CI host.
+ gawk -v lo="$ephem_lo" -v hi="$ephem_hi" '
+   $1 ~ /\/tcp/ { print; next }
+   $1 ~ /\/udp/ {
+     split($2, addr, ":")
+     port = strtonum("0x" addr[2])
+     if (port < lo || port > hi) print
+   }
+ ' "$REPORT/$1/bound-sockets-raw.txt" >"$REPORT/$1/listening-sockets.txt"
  guest 'ps w' >"$REPORT/$1/process-list.txt"
 }
 snap before
@@ -380,7 +394,7 @@ for stage in after-install after-remove; do
  diff -u "$REPORT/before/nft-static.txt" "$REPORT/$stage/nft-static.txt"
  diff -u "$REPORT/before/routes-v4.txt" "$REPORT/$stage/routes-v4.txt"
  diff -u "$REPORT/before/rules-v4.txt" "$REPORT/$stage/rules-v4.txt"
- for evidence in routes-v6 rules-v6 resolv-conf resolv-auto listening-sockets; do
+ for evidence in routes-v6 rules-v6 resolv-conf resolv-auto ephemeral-port-range listening-sockets; do
   diff -u "$REPORT/before/$evidence.txt" "$REPORT/$stage/$evidence.txt" >"$REPORT/$evidence-diff-$stage.txt"
  done
 done
