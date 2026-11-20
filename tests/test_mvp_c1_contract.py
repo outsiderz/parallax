@@ -57,7 +57,7 @@ class MVPC1Contract(unittest.TestCase):
 
     def test_031_three_package_release_consistency(self):
         def var(contents, name):
-            found = re.search(r"^" + re.escape(name) + r":=(\\S+)$", contents, re.M)
+            found = re.search(r"^" + re.escape(name) + r":=(\S+)$", contents, re.M)
             self.assertIsNotNone(found, name)
             return found.group(1)
 
