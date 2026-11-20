@@ -2,6 +2,7 @@
 """MVP-c1 source-level invariants; live checks run in QEMU."""
 import subprocess
 import unittest
+import re
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -53,6 +54,42 @@ class MVPC1Contract(unittest.TestCase):
         self.assertIn("parallax-sb", daemon)
         self.assertIn("repeated kill -9 exhausted bounded procd respawn", guest)
         self.assertIn("procd kept restarting sing-box across eight crash cycles", guest)
+
+    def test_031_three_package_release_consistency(self):
+        def var(contents, name):
+            found = re.search(r"^" + re.escape(name) + r":=(\\S+)$", contents, re.M)
+            self.assertIsNotNone(found, name)
+            return found.group(1)
+
+        core = (ROOT/"parallax/Makefile").read_text()
+        luci = (ROOT/"luci-app-parallax/Makefile").read_text()
+        self.assertEqual(var(core, "PKG_VERSION"), "0.3.1")
+        self.assertEqual(var(luci, "PKG_VERSION"), var(core, "PKG_VERSION"))
+        self.assertEqual(var(core, "PKG_RELEASE"), "1")
+        self.assertEqual(var(luci, "PKG_RELEASE"), var(core, "PKG_RELEASE"))
+        expected = var(core, "PKG_VERSION") + "-r" + var(core, "PKG_RELEASE")
+        # luci.mk builds the generated third package; there is no separate Makefile.
+        self.assertIn("include $(TOPDIR)/feeds/luci/luci.mk", luci)
+        self.assertEqual(var(luci, "PKG_PO_VERSION"), expected)
+        self.assertEqual((ROOT/"parallax/files/usr/share/parallax/version").read_text().strip(), "0.3.1")
+        cli = (ROOT/"parallax/files/usr/bin/parallax").read_text()
+        self.assertIn("VERSION='0.3.1'", cli)
+        daemon = (ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()
+        self.assertIn("const VERSION = '0.3.1';", daemon)
+        smoke = (ROOT/"scripts/ci/qemu-smoke.sh").read_text()
+        self.assertIn('name-0.3.1-r1.apk', smoke)
+        self.assertIn('wrong APK version for $name (expected 0.3.1-r1)', smoke)
+
+    def test_no_secret_leak_on_native_refusal(self):
+        guest = (ROOT/"tests/mvp_c1_guest.sh").read_text()
+        controller = (ROOT/"parallax/files/usr/share/parallax/singbox.sh").read_text()
+        for command in ("/etc/init.d/sing-box stop", "/etc/init.d/sing-box disable"):
+            self.assertIn(command, controller)
+            self.assertIn(command, guest)
+        self.assertIn("expected_refusal=", guest)
+        self.assertIn('[ "$actual_refusal" = "$expected_refusal" ]', guest)
+        self.assertIn('NATIVE REFUSAL OUTPUT (exact-match asserted', guest)
+        self.assertIn("without secrets", guest)
 
     def test_no_network_operations(self):
         src = (ROOT/"parallax/files/usr/share/parallax/singbox.sh").read_text()
