@@ -41,10 +41,22 @@ NATIVE_JSON=/etc/sing-box/config.json
 [ -f "$NATIVE_CONF" ] && [ -f "$NATIVE_JSON" ] || {
   echo 'FAIL: native sing-box configuration files missing'; exit 1
 }
+# Baseline must be stopped and disabled. If it is not, fail rather than
+# modifying an unexpected pre-existing native service state.
+if /etc/init.d/sing-box enabled >/dev/null 2>&1; then
+  echo 'FAIL: native sing-box baseline is boot-enabled'; exit 1
+fi
+if ubus call service list '{"name":"sing-box","verbose":true}' | grep -Eq '"running"[[:space:]]*:[[:space:]]*true'; then
+  echo 'FAIL: native sing-box baseline is already running'; exit 1
+fi
 cp -p "$NATIVE_CONF" "$TMP/native-uci.orig"
 cp -p "$NATIVE_JSON" "$TMP/native-json.orig"
+native_original_hash="$(sha256sum "$NATIVE_CONF" "$NATIVE_JSON")"
+echo 'NATIVE BASELINE: stopped, disabled, original config SHA256 captured'
+printf '%s\n' "$native_original_hash"
 native_restore() {
   /etc/init.d/sing-box stop >/dev/null 2>&1 || :
+  /etc/init.d/sing-box disable >/dev/null 2>&1 || :
   cp -p "$TMP/native-uci.orig" "$NATIVE_CONF"
   cp -p "$TMP/native-json.orig" "$NATIVE_JSON"
 }
@@ -123,7 +135,23 @@ echo "NATIVE AFTER UBUS:"
 cat "$TMP/native-ubus-after.log"
 echo 'PASS: real native sing-box procd/ubus/process detected; PID, config hashes, socket unchanged; Parallax refused'
 native_restore
+if /etc/init.d/sing-box enabled >/dev/null 2>&1; then
+  echo 'FAIL: native sing-box remained boot-enabled after fixture restore'; exit 1
+fi
+if ubus call service list '{"name":"sing-box","verbose":true}' | grep -Eq '"running"[[:space:]]*:[[:space:]]*true'; then
+  echo 'FAIL: native sing-box remained running after fixture restore'; exit 1
+fi
+if [ "$(sha256sum "$NATIVE_CONF" "$NATIVE_JSON")" != "$native_original_hash" ]; then
+  echo 'FAIL: original native sing-box configs were not restored'; exit 1
+fi
+if awk -v port="$porthex" '$2 ~ (":" port "$") && $4 == "0A" {found=1} END {exit !found}' /proc/net/tcp; then
+  echo 'FAIL: native fixture listener remained after stop'; exit 1
+fi
+echo 'NATIVE RESTORED: disabled, stopped, original files SHA256 matched, fixture socket absent'
+printf '%s\n' "$(sha256sum "$NATIVE_CONF" "$NATIVE_JSON")"
+echo 'PASS: native service is stopped and disabled; configs restored before positive control'
 
+# Positive control: with native procd service stopped, Parallax MUST start.
 parallax singbox start >"$TMP/start.log" 2>&1 || {
   echo 'FAIL: manual start failed'
   sed -n '1,8p' "$TMP/start.log"
@@ -151,6 +179,7 @@ echo "$status" | grep -q "uid=$uid "
 # Verify process is supervised by our own procd instance, not native sing-box.
 ubus call service list '{"name":"parallax-singbox","verbose":true}' |
   grep -Fq '"parallax-singbox"'
+echo 'PASS: positive control without running native sing-box: Parallax starts successfully'
 echo 'PASS: manual procd instance running as parallax-sb; private config root:group 0640'
 
 kill -9 "$pid"
@@ -207,4 +236,14 @@ chmod 0600 "$STORE/active.json"
 rm -f "$TMP/active.json"
 test ! -e "$RUN/config.json"
 test ! -e "$RUN/requested"
+if /etc/init.d/sing-box enabled >/dev/null 2>&1; then
+  echo 'FAIL: later MVP-c1 tests enabled native sing-box'; exit 1
+fi
+if ubus call service list '{"name":"sing-box","verbose":true}' | grep -Eq '"running"[[:space:]]*:[[:space:]]*true'; then
+  echo 'FAIL: later MVP-c1 tests restarted native sing-box'; exit 1
+fi
+[ "$(sha256sum "$NATIVE_CONF" "$NATIVE_JSON")" = "$native_original_hash" ] || {
+  echo 'FAIL: later MVP-c1 tests changed native sing-box configs'; exit 1
+}
+echo 'PASS: native sing-box still stopped/disabled with original configs after all MVP-c1 subtests'
 echo 'PASS: MVP-c1 QEMU manual-only, UID, security, crash recovery and revision fallback'
