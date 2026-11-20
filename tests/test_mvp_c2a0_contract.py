@@ -61,7 +61,7 @@ class C2A0Contract(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/build-test.yml").read_text()
         guest = (ROOT / "tests/mvp_c2a0_guest.sh").read_text()
         for token in ("mvp-c2a0-gate.log", "mvp-c2a0-uci-diff.txt",
-                      "mvp-c2a0-PASS.txt", "mvp-c2a0-nft-static-diff.txt"):
+                      "mvp-c2a0-PASS.txt", "mvp-c2a0-$invariant-diff.txt"):
             self.assertIn(token, smoke + workflow)
         for scenario in ("stale", "foreign_mac", "ip_conflict", "rebind",
                          "exact UCI v2 rollback", "real SSH management peer excluded",
