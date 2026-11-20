@@ -44,6 +44,9 @@ native="$(ubus call service list '{"name":"sing-box","verbose":true}')" ||
 if printf '%s\n' "$native" | grep -Eq '"running"[[:space:]]*:[[:space:]]*true'; then
     fail 'native sing-box running; no automatic stop/disable'
 fi
+if pidof sing-box >/dev/null 2>&1; then
+    fail 'sing-box process present outside proven native/Parallax isolation'
+fi
 command -v nft >/dev/null || fail 'nft unavailable'
 fw4 print >/dev/null 2>&1 || fail 'fw4 inspection failed'
 flow="$(uci -q get 'firewall.@defaults[0].flow_offloading' || :)"
@@ -56,14 +59,17 @@ if printf '%s\n' "$ruleset" |
     fail 'foreign nft mark, flowtable or TProxy needs owner review'
 fi
 for family in -4 -6; do
-    ip "$family" rule show | awk -F: '
+    rules="$(ip "$family" rule show)" ||
+        fail 'cannot inspect kernel policy rules'
+    printf '%s\n' "$rules" | awk -F: '
         /^[0-9]+:/ { prio=$1+0; if (prio!=0 && prio!=32766 && prio!=32767) bad=1 }
         END { exit bad }
     ' || fail 'foreign ip rule priority/mark requires owner review'
-    if ip "$family" rule show | grep -Eq '(fwmark|lookup 20263|^11000:)'; then
+    if printf '%s\n' "$rules" | grep -Eq '(fwmark|lookup 20263|^11000:)'; then
         fail 'fwmark, priority or routing table collision'
     fi
-    existing="$(ip "$family" route show table 20263 2>/dev/null || :)"
+    existing="$(ip "$family" route show table 20263 2>/dev/null)" ||
+        fail 'cannot inspect reserved routing table'
     [ -z "$existing" ] || fail 'routing table 20263 occupied'
 done
 echo 'PASS: read-only fw4/flowtable/marks/ip-rule/table/native-sing-box audit'
@@ -80,6 +86,19 @@ if [ "$proof" = local_lease ]; then
     printf '%s\n' "$dnsmasq_service" |
         grep -Eq '"running"[[:space:]]*:[[:space:]]*true' ||
         fail 'no running local authoritative DHCP service'
+    # Lease evidence is authoritative ONLY when a non-ignored local dhcp
+    # section actually owns the selected ingress device. Never borrow a
+    # matching MAC/IP lease from a different VLAN or upstream server.
+    authority=0
+    for section in $(uci -q show dhcp | awk -F '[.=]' '$3 == "dhcp" {print $2}'); do
+        logical="$(uci -q get "dhcp.$section.interface" || :)"
+        device="$(uci -q get "network.$logical.device" || :)"
+        ignored="$(uci -q get "dhcp.$section.ignore" || :)"
+        if [ "$device" = "$iface" ] && [ "$ignored" != 1 ]; then
+            authority=1
+        fi
+    done
+    [ "$authority" = 1 ] || fail 'local DHCP authority for selected interface unproven'
     leases=/tmp/dhcp.leases
 fi
 parallax_binding_evidence "$mac" "$ipv4" "$proof" "$neighbour" "$leases" "$(date +%s)" ||
