@@ -2,8 +2,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=parallax
-PKG_VERSION:=0.2.0
-PKG_RELEASE:=3
+PKG_VERSION:=0.3.0
+PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=Parallax contributors
@@ -16,6 +16,7 @@ define Package/parallax
   TITLE:=Parallax safe configuration compiler - development branch
   DEPENDS:=+ucode +ucode-mod-fs +ucode-mod-digest +ucode-mod-ubus +ucode-mod-uloop +ucode-mod-uci +ubus +uci
   PKGARCH:=all
+  USERID:=parallax-sb:parallax-sb
 endef
 
 define Package/parallax/description
@@ -65,11 +66,26 @@ endef
 # A later explicit /etc/init.d/parallax enable + start remains supported.
 define Package/parallax/postinst
 #!/bin/sh
-[ -n "$${IPKG_INSTROOT}" ] && exit 0
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+# Never autostart the separate, manually armed sing-box procd instance.
+/etc/init.d/parallax-singbox stop || :
+/etc/init.d/parallax-singbox disable || exit 1
 if [ -f /etc/parallax/.reinstall-stopped ]; then
 	/etc/init.d/parallax stop || :
 	/etc/init.d/parallax disable || exit 1
 	rm -f /etc/parallax/.reinstall-stopped || exit 1
+fi
+exit 0
+endef
+
+
+# Package removal must never leave secret-bearing runtime config behind.
+define Package/parallax/postrm
+#!/bin/sh
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+if [ ! -L /run/parallax-singbox ]; then
+	rm -f /run/parallax-singbox/config.json /run/parallax-singbox/selected.ref /run/parallax-singbox/requested
+	rmdir /run/parallax-singbox 2>/dev/null || :
 fi
 exit 0
 endef
@@ -79,8 +95,11 @@ define Package/parallax/install
 	$(INSTALL_DIR) $(1)/usr/bin $(1)/usr/share/parallax
 	$(INSTALL_CONF) ./files/etc/config/parallax $(1)/etc/config/parallax
 	$(INSTALL_BIN) ./files/etc/init.d/parallax $(1)/etc/init.d/parallax
+	$(INSTALL_BIN) ./files/etc/init.d/parallax-singbox $(1)/etc/init.d/parallax-singbox
 	$(INSTALL_BIN) ./files/usr/bin/parallax $(1)/usr/bin/parallax
 	$(INSTALL_DATA) ./files/usr/share/parallax/daemon.uc $(1)/usr/share/parallax/daemon.uc
+	$(INSTALL_BIN) ./files/usr/share/parallax/singbox.sh $(1)/usr/share/parallax/singbox.sh
+	$(INSTALL_DATA) ./files/usr/share/parallax/singbox_gate.uc $(1)/usr/share/parallax/singbox_gate.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/render.uc $(1)/usr/share/parallax/render.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/transaction.uc $(1)/usr/share/parallax/transaction.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/platform.sh $(1)/usr/share/parallax/platform.sh
