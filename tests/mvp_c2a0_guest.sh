@@ -24,7 +24,7 @@ sha_v2="$(sha256sum "$CFG" | awk '{print $1}')"
 parallax schema migrate-v3
 [ "$(uci -q get parallax.main.schema_version)" = 3 ]
 test -f /etc/parallax/generated/schema-v2.backup
-[ "$(stat -c %a /etc/parallax/generated/schema-v2.backup)" = 600 ]
+/usr/bin/ucode /usr/share/parallax/fs_guard.uc backup /etc/parallax/generated/schema-v2.backup
 parallax check
 echo 'PASS: offline root UCI v2->v3 migration and strict validation'
 

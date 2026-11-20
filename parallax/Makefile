@@ -104,6 +104,7 @@ define Package/parallax/install
 	$(INSTALL_DATA) ./files/usr/share/parallax/render.uc $(1)/usr/share/parallax/render.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/selected_clients.uc $(1)/usr/share/parallax/selected_clients.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/selected_print.uc $(1)/usr/share/parallax/selected_print.uc
+	$(INSTALL_DATA) ./files/usr/share/parallax/fs_guard.uc $(1)/usr/share/parallax/fs_guard.uc
 	$(INSTALL_BIN) ./files/usr/share/parallax/schema_migrate.sh $(1)/usr/share/parallax/schema_migrate.sh
 	$(INSTALL_BIN) ./files/usr/share/parallax/net_preflight.sh $(1)/usr/share/parallax/net_preflight.sh
 	$(INSTALL_BIN) ./files/usr/share/parallax/binding_evidence.sh $(1)/usr/share/parallax/binding_evidence.sh

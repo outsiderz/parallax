@@ -12,8 +12,8 @@ fail() { echo "Parallax schema: $1" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || fail 'root required'
 [ "$#" = 1 ] || fail 'usage: parallax schema migrate-v3|rollback-v2'
 case "$1" in migrate-v3|rollback-v2) ;; *) fail 'unsupported operation' ;; esac
-[ -f "$CONFIG" ] && [ ! -L "$CONFIG" ] || fail 'unsafe UCI configuration'
-[ "$(stat -c %u "$CONFIG")" = 0 ] || fail 'UCI config not root-owned'
+/usr/bin/ucode /usr/share/parallax/fs_guard.uc config "$CONFIG" ||
+    fail 'unsafe UCI configuration'
 [ -z "$(uci -q changes parallax)" ] || fail 'uncommitted UCI changes'
 if /usr/share/parallax/singbox.sh status 2>/dev/null | grep -q '^running '; then
     fail 'isolated sing-box must be manually stopped before schema migration'
@@ -29,9 +29,8 @@ if [ "$1" = migrate-v3 ]; then
     [ ! -e "$BACKUP" ] && [ ! -e "$HASH" ] ||
         fail 'existing rollback backup; restore or archive explicitly'
     mkdir -p "$STORE"
-    [ ! -L "$STORE" ] && [ "$(stat -c %u "$STORE")" = 0 ] ||
+    /usr/bin/ucode /usr/share/parallax/fs_guard.uc private-dir "$STORE" ||
         fail 'unsafe private store'
-    chmod 0700 "$STORE"
     cp "$CONFIG" "$BACKUP" || fail 'cannot create v2 backup'
     chmod 0600 "$BACKUP"
     sha256sum "$BACKUP" > "$HASH"
@@ -49,8 +48,8 @@ else
     [ -f "$BACKUP" ] && [ -f "$HASH" ] &&
     [ ! -L "$BACKUP" ] && [ ! -L "$HASH" ] ||
         fail 'root-only v2 rollback backup missing or unsafe'
-    [ "$(stat -c %u "$BACKUP")" = 0 ] &&
-    [ "$(stat -c %a "$BACKUP")" = 600 ] ||
+    /usr/bin/ucode /usr/share/parallax/fs_guard.uc backup "$BACKUP" &&
+    /usr/bin/ucode /usr/share/parallax/fs_guard.uc backup "$HASH" ||
         fail 'unsafe v2 backup permissions'
     sha256sum -c "$HASH" >/dev/null || fail 'v2 rollback backup checksum mismatch'
     [ "$(uci -q get parallax.main.schema_version)" = 3 ] ||

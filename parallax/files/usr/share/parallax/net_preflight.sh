@@ -12,11 +12,8 @@ parallax_check_platform || fail 'unsupported platform'
     fail 'UCI v3 required; run offline schema migration first'
 parallax_check_config || fail 'invalid UCI v3'
 [ -z "$(uci -q changes parallax)" ] || fail 'uncommitted UCI changes'
-[ -f /etc/config/parallax ] && [ ! -L /etc/config/parallax ] &&
-[ "$(stat -c %u /etc/config/parallax)" = 0 ] ||
-    fail 'unsafe UCI config ownership'
-case "$(stat -c %a /etc/config/parallax)" in 600|640|644) ;; *)
-    fail 'unsafe UCI config permissions' ;; esac
+/usr/bin/ucode /usr/share/parallax/fs_guard.uc config /etc/config/parallax ||
+    fail 'unsafe UCI config ownership/mode'
 
 selection="$(/usr/bin/ucode /usr/share/parallax/selected_print.uc one)" ||
     fail 'exactly one valid selected_client required'
