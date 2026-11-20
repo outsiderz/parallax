@@ -126,6 +126,13 @@ jobs:
           done
           (cd "$ARTIFACT_DIR" && sha256sum *.apk && ls -lh *.apk) \
             | tee "$REPORT_DIR/produced-apks.txt"
+          for pkg in parallax luci-app-parallax luci-i18n-parallax-ru; do
+            test -s "$ARTIFACT_DIR/${pkg}-0.3.1-r1.apk" || {
+              echo "FAIL: missing or empty 0.3.1-r1 package for $pkg"
+              exit 1
+            }
+            echo "PASS: matched release 0.3.1-r1 for $pkg"
+          done | tee "$REPORT_DIR/package-version-consistency.log"
 
       - name: Expand combined-efi image and run real QEMU KVM smoke
         run: |
@@ -148,7 +155,10 @@ jobs:
           done
           test -f "$REPORT_DIR/qemu/mvp-c1-uci-diff.txt"
           test ! -s "$REPORT_DIR/qemu/mvp-c1-uci-diff.txt"
-          grep -Fq 'PASS: real native sing-box procd/ubus/process detected' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'NATIVE REFUSAL OUTPUT (exact-match asserted; no secret-bearing data)' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: native sing-box refusal includes stop and disable commands without secrets' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'Parallax singbox: native sing-box is running; Parallax was NOT started. To switch services intentionally, run: /etc/init.d/sing-box stop ; /etc/init.d/sing-box disable' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+                    grep -Fq 'PASS: real native sing-box procd/ubus/process detected' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: positive control without running native sing-box' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: native service is stopped and disabled; configs restored before positive control' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: native sing-box still stopped/disabled with original configs after all MVP-c1 subtests' "$REPORT_DIR/qemu/mvp-c1-gate.log"
