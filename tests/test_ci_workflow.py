@@ -73,6 +73,10 @@ class CIChecks(unittest.TestCase):
         self.assertIn("ubus call service list", init)
         self.assertIn("unset USE_PROCD", init)
         self.assertIn("procd service lookup failed", init)
+        self.assertIn("parallax_stop_if_registered", init)
+        self.assertIn("restart() {", init)
+        self.assertIn("reload_service() {", init)
+        self.assertIn("restart emitted redundant procd delete", smoke)
 
         self.assertIn("negative-validation.log", smoke)
         self.assertIn("transaction-recovery.log", smoke)

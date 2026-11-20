@@ -148,6 +148,10 @@ if grep -Fq 'Command failed: ubus call service delete' "$REPORT/stop-idempotence
   exit 1
 fi
 guest 'uci set parallax.main.enabled=1; uci commit parallax; /etc/init.d/parallax enable; /etc/init.d/parallax restart' | tee "$REPORT/start.log"
+if grep -Fq 'Command failed: ubus call service delete' "$REPORT/start.log"; then
+  echo "FAIL: restart emitted redundant procd delete"
+  exit 1
+fi
 READY=0
 for n in $(seq 1 30); do
  if guest 'ubus list parallax' >/dev/null 2>&1; then READY=1; break; fi

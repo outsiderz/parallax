@@ -8,19 +8,50 @@ USE_PROCD=1
 # both encounter this state. Skip ONLY the redundant delete when the ubus
 # registry query succeeds and confirms that Parallax is absent.
 # Keep normal procd error handling when the registry query itself fails.
+# Return 0 only when procd lists this service, 1 when genuinely absent,
+# and 2 if the query failed. Query errors must never masquerade as absence.
+parallax_service_registered() {
+    local entry
+    if entry="$(ubus call service list '{"name":"parallax"}' 2>&1)"; then
+        case "$entry" in
+            *'"parallax"'*) return 0 ;;
+            *) return 1 ;;
+        esac
+    fi
+    printf 'Parallax: procd service lookup failed: %s\n' "$entry" >&2
+    return 2
+}
+
 case "${action:-}" in
     stop|shutdown)
-        if parallax_procd_entries="$(ubus call service list '{"name":"parallax"}' 2>&1)"; then
-            case "$parallax_procd_entries" in
-                *'"parallax"'*) ;;
-                *) unset USE_PROCD ;;
-            esac
+        if parallax_service_registered; then
+            :
         else
-            printf 'Parallax: procd service lookup failed: %s\n' "$parallax_procd_entries" >&2
+            rc=$?
+            [ "$rc" -eq 1 ] && unset USE_PROCD
         fi
-        unset parallax_procd_entries
         ;;
 esac
+
+# rc.common implements restart as an unconditional stop+start; when procd
+# has no Parallax registration, suppress only the redundant stop. If the
+# registry is unavailable, keep the real stop error visible.
+parallax_stop_if_registered() {
+    if parallax_service_registered; then
+        stop "$@"
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] && return 0
+        stop "$@"
+    fi
+}
+
+restart() {
+    trap '' TERM
+    parallax_stop_if_registered "$@" || { trap - TERM; return 1; }
+    trap - TERM
+    start "$@"
+}
 
 START=95
 STOP=10
@@ -56,8 +87,8 @@ start_service() {
 }
 
 reload_service() {
-    # Re-evaluate the enable toggle and replace the procd instance cleanly.
-    stop
+    # Re-evaluate toggle; skip delete if procd never registered Parallax.
+    parallax_stop_if_registered || return 1
     start
 }
 
