@@ -357,3 +357,74 @@ MVP-c1 deliberately compiles an **inbound-free** configuration (`inbounds: []`).
 The **negative control** in disposable QEMU must start the package-installed native service (not a synthetic `ubus` shim), validate its loopback-only listener and actual PID/real procd entry, and prove that Parallax refuses while the native PID, original running configuration checksums and socket remain unchanged. The **positive control** must then stop/disable the native test instance, restore its pre-test configuration checksums and demonstrate that `parallax singbox start` succeeds under `parallax-sb`. At the end of all MVP-c1 tests, the native service must remain stopped and boot-disabled, the vendor files must match their baseline SHA-256, and no fixture listener may remain. Subsequent smoke tests and package removal must remain unchanged; the QEMU CI artifacts must include the before/after evidence and final assertions.
 
 **Future MVP-c2 refinement, design only (not authorized):** replace the broad service-level mutual exclusion *only if* independent native and Parallax operation can be proven safe. Before installing any own listeners or kernel state, compare the actual TCP/UDP binding tuples (address family, local address including wildcard versus loopback/interface scope, port and protocol), actual socket owners and startup races; compare fwmark/mask intersections, `ip rule` priorities, routing table IDs, route ownership and nft hook/chain/priority ownership. Native sing-box being present alone will no longer necessarily imply collision *after* these exhaustive checks are designed, implemented and passed; any overlap, ambiguity, or unavailable evidence still fails closed. The c2 gate must prove no changes to native service/processes/config and no foreign route/rule/nft mutations. This is a required acceptance criterion for c2, **not c2 implementation**.
+
+---
+
+# Draft 3 — MVP-в2 pre-implementation architecture proposal (NOT APPROVED)
+
+**Status:** For owner review only. No MVP-в2 implementation, network agent, TProxy, nftables, routes, DNS or real-router operations are authorized by this document. MVP-в1 remains a separate released step; post-release fixes are handled in a separate draft PR.
+
+## D3-A. Canonical selected-client source and immutable enable snapshot
+
+**Source of truth:** a dedicated, explicitly versioned root-owned UCI section in `/etc/config/parallax`, not inferred from an active DHCP lease or a client list in LuCI. Proposed new c2-only schema:
+
+```uci
+config selection 'selected_clients'
+    option schema_version '1'
+    option enabled '0'
+
+config selected_client 'example_laptop'
+    option enabled '1'
+    option mac '02:11:22:33:44:55'
+    option ipv4 '10.10.20.120'
+    option interface 'br-lan.20'
+```
+
+This is a **proposal**, not a presently recognized UCI schema. Every client entry is one stable identity (validated unicast MAC) bound to an expected IPv4, L2 ingress device/VLAN and explicitly selected state. No hostname-only or unrestricted CIDR selection in MVP-в2. Duplicate MACs, duplicate IPs, missing interface IDs, broadcast/multicast MACs, ambiguous topology and selecting a management peer all fail closed. IPv6 selected clients receive the separately approved external ICMPv6 reject policy; the c2 data model must explicitly bind any IPv6 selection before use and cannot infer IPv6 identity from SLAAC address alone.
+
+**Who can edit:** only a local authenticated root administrator via SSH/physical console using UCI CLI; `/etc/config/parallax` is owned by root and changes require an explicit `uci commit parallax`. LuCI/rpcd stays **read-only** in c2. No API or unauthenticated consumer may change the selection. Keep an audit event with generation and redacted client identifiers; never publish proxy credentials.
+
+**Read path on `parallax net enable`:** a privileged, narrowly-scoped preflight reads the committed UCI file **only once**, validates schema and file ownership/mode, checks the selected client's MAC/IP/interface bindings against the authoritative local DHCP lease state and real neighbour/L2 observations, and computes a canonical SHA-256 snapshot containing the selected tuples and UCI revision. The temporary generation-specific snapshot is stored root-only `0600` under `/run/parallax` with a lock; it is immutable during the transaction and never auto-applies edited UCI sections. Re-read and compare revision/hash immediately before installing any Parallax-owned kernel objects, then refuse on a mismatch. If UCI changes while ACTIVE, mark generation stale and require explicit disable/re-enable; never silently move interception to a different IP.
+
+**DHCP churn:** authoritative DHCP lease lookup is provider-dependent and must be explicitly configured for the test topology. If dnsmasq owns DHCP, read the current lease table (normally `/tmp/dhcp.leases`) **read-only**, correlate with the correct VLAN/bridge and verify against `ip neigh` and interface state. Do not assume that file exists or is authoritative for external DHCP servers. If DHCP is external, require an authenticated, read-only authoritative binding source or reject enable. A stale lease, simultaneous conflicting lease, unexpected MAC at selected IPv4, changed address, expired binding, multiple interfaces, uncertain ARP/neighbor information, or missing reliable source **rejects enable** without changing any network state. The independent watchdog monitors lease/binding changes during PENDING and ACTIVE; a detected rebind immediately enters safe recovery (direct: native restore; block: guard) and requires fresh authorization. Never capture a newly assigned IP solely because it inherited the previously selected address.
+
+## D3-B. Kill-switch `block` terminal states
+
+`block` means *no direct internet fallback for selected clients while interception is active and proxy health is uncertain*. It does **not** promise persistent blocking after administrator disable, expiry rollback, or reboot; those transitions end the temporary enforcement contract. Management, router-local and explicitly approved LAN exceptions remain native. A guard is an independently managed **Parallax-owned, ephemeral** nft object that does not require sing-box to stay alive. A failed or ambiguous cleanup is `DEGRADED`, never reported as success.
+
+| Event | Immediately while recovery is in progress | Deterministic terminal state | Who/what clears guard |
+| --- | --- | --- | --- |
+| 90-second confirmation deadline expires, with `block` chosen | Guard denies selected external IPv4 and IPv6 (with the scoped ICMPv6 reject policy) while owned TProxy/routes/rules are unwound | **DISABLED / NATIVE** after verified complete rollback, no Parallax-owned guard or interception remains. If cleanup cannot be proven, **DEGRADED/BLOCKED**, guard retained where feasible, administrator intervention required | Independent watchdog removes guard **last**, after ownership verification and selected conntrack cleanup |
+| `kill -9` of isolated sing-box during `PENDING_CONFIRMATION` | Guard protects selected clients; watchdog starts rollback before deadline | **DISABLED / NATIVE** after verified rollback; otherwise **DEGRADED/BLOCKED** | Independent watchdog |
+| `kill -9` of isolated sing-box during confirmed `ACTIVE` | Guard immediately denies selected external traffic; do not silently switch selected to direct | **BLOCKED / RECOVERY_REQUIRED** until explicit administrator `net disable` / `restore_native_internet` or separately approved successful recovery handshake; do not label it ACTIVE | Root administrator-initiated recovery, not sing-box restart alone |
+| Explicit `parallax net disable` | Scoped guard remains during removal of owned hooks, marks, rules, routes and selected conntrack | **DISABLED / NATIVE** after verification; on error **DEGRADED/BLOCKED** and report remaining owned objects | Disable/restore agent removes guard last |
+| Reboot/power loss | Kernel and tmpfs reset; no persistent Parallax guard or re-enable | **DISABLED / NATIVE** on boot, even if `block` was previously selected; never auto-reinstall interception or guard | Kernel reboot destroys ephemeral state |
+
+**Clarification:** `DEGRADED/BLOCKED` is an exceptional safety state and may deny internet for selected devices until attended recovery. If the guard itself is missing or the kernel rejects fail-closed installation, do not claim `BLOCKED`; report `DEGRADED / ENFORCEMENT_UNVERIFIED`, alert the administrator, and do not start interception. When guard cleanup and native probes are verified, the final state must be labeled `DISABLED / NATIVE` (not lingering `block`). The 90-second timer never resets on wrong confirmation, crashes or retries.
+
+## D3-C. Native sing-box coexistence and resource conflict gate
+
+MVP-в1 intentionally refuses any concurrently running native sing-box service. MVP-в2 may relax *that broad presence test* **only if** a separate real-resource isolation gate is proven; the default stays refuse-on-unknown. A running native process is not itself evidence of actual collision, but neither is an apparently empty port sufficient evidence of independence.
+
+- **Sockets:** enumerate real bound/listening TCP and UDP sockets with owning PIDs, network namespaces, IPv4/IPv6 and `IPV6_V6ONLY`, wildcard vs specific-interface/loopback address scopes and proposed Parallax bind addresses; test 127.0.0.1, 0.0.0.0, ::1 and :: where applicable. Reject any actual or potential overlap, including ephemeral port allocation and bind/start races. Assert native PID, UCI/JSON SHA-256 and live sockets are unchanged on failure.
+- **Marks/routing:** read all installed `ip -4/-6 rule`, routing tables, existing `fwmark` values **and masks**, route priorities/owners and existing local TProxy policy. Reject overlapping mark bits/masks or priorities, duplicate table IDs/ownership, ambiguous kernel state and unmanaged rules. Probe both source and destination routing decisions.
+- **nft/fw4:** inventory foreign tables/chains/hooks, priorities, conntrack marks, flowtables/offload and native sing-box/forkop/pbr/mwan3 owners. Any owner collision or unverifiable isolation causes refusal. Never delete, modify or flush another service's state; do not touch stock sing-box configuration or init script.
+- **Actual QEMU CI:** start *real native sing-box* under procd with TCP and UDP sockets; first prove a non-overlapping topology is safe only if explicitly supported, then try actual IPv4/IPv6 wildcard and exact-address conflicts, socket owner changes, startup races and mark/table collisions. On failure Parallax must fail before writing any net-state, with zero foreign diff and untouched native PID, config hashes and sockets. Verify rollback and independent guard under `kill -9`. Real listener collision belongs to c2 CI, not c1.
+- **Acceptance:** run separate QEMU gates for collisions, successful isolation, selected/unselected/management traffic, retained management access, guard terminal states, clean rollback and zero foreign diffs. No real router testing until explicit authorization.
+
+## D3-D. Pre-install checklist for physical OpenWrt x86/router hardware (read-only first)
+
+The following is a **plan only**, not permission to run commands on production.
+
+| Check | Required evidence / refusal criterion |
+| --- | --- |
+| Inventory physical NICs | Collect `ip -br link`, `ethtool -i`, `lspci -nnk`, MAC/permanent MAC, kernel driver, firmware and PCI mapping; explicitly map WAN, LAN, switch trunks, VLAN bridges, Wi-Fi AP uplinks and management port. Refuse if mapping is ambiguous |
+| Topology and management safety | Document router WAN/LAN physical links, VLAN 20/30, native VPN services, actual SSH management peer and fail-safe local console/out-of-band path; never select management host/IP |
+| Interface-level offloads | Read `ethtool -k <interface>` for GRO, GSO, TSO, LRO, RX/TX checksumming, VLAN offloads and hardware flow steering; inventory OpenWrt `flow_offloading` and `flow_offloading_hw` with `uci show firewall` and `fw4 print`. **Do not turn features off automatically** |
+| Flowtable collision and bypass | Examine `nft list ruleset`, `nft list flowtables` where supported, conntrack zones, software/hardware acceleration. Any affected WAN/LAN flow-offload or uncertain bypass => refuse MVP-в2 |
+| Routing/policy inventory | Snapshot `ip -4/-6 rule`, all routing tables, `ip route get` for management and selected clients, DHCP server ownership, DNS path, pbr/mwan3/Forkop etc.; refuse on collision or unverifiable ownership |
+| Host resources/modules | Validate kernel and package versions, `nft tproxy`, transparent socket support, IPv4/IPv6 capability, CPU architecture, memory, limits and port availability; read-only until QEMU equivalence is established |
+| Baseline recovery | Signed/copy-verified backup of `/etc/config`, captured baseline of nft/rules/routes/DNS, physical-console rollback rehearsal on *disposable hardware*, independent watchdog proof and explicit owner sign-off |
+| Deployment gate | First compare QEMU configuration to a **non-production physical** test router, including real NIC drivers and offload. Only after separate owner approval consider supervised production installation with no autostart, and acceptance probes for selected/unselected/management clients |
+
+**Owner approval needed:** selected-client binding policy, external DHCP authority protocol, confirmed `block` timeout/native transition, collision ownership definitions and real-hardware go/no-go. No draft-3 text authorizes (в2) code changes or deployment.
