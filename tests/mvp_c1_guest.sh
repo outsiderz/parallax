@@ -118,10 +118,27 @@ if parallax singbox start >"$TMP/native-conflict.log" 2>&1; then
   echo 'FAIL: Parallax started while real native sing-box procd service was running'
   exit 1
 fi
-grep -Fq 'native sing-box is running' "$TMP/native-conflict.log" || {
-  echo 'FAIL: Parallax did not identify real native service conflict'
-  cat "$TMP/native-conflict.log"; exit 1
+# The rejection must be a single stable, secret-free operator message.
+# Never print unexpected output: it might contain credentials or proxy JSON.
+expected_refusal='Parallax singbox: native sing-box is running; Parallax was NOT started. To switch services intentionally, run: /etc/init.d/sing-box stop ; /etc/init.d/sing-box disable . These commands are guidance only; Parallax never executes them or changes native configuration.'
+actual_refusal="$(cat "$TMP/native-conflict.log")"
+[ "$actual_refusal" = "$expected_refusal" ] || {
+  echo 'FAIL: native sing-box refusal differs from approved secret-free message'
+  exit 1
 }
+for command in '/etc/init.d/sing-box stop' '/etc/init.d/sing-box disable'; do
+  grep -Fq "$command" "$TMP/native-conflict.log" || {
+    echo 'FAIL: native-service refusal omitted a required operator command'
+    exit 1
+  }
+done
+if printf '%s\n' "$actual_refusal" | grep -Eqi '(password|private_key|credential|uuid|token|secret)'; then
+  echo 'FAIL: native-service refusal contains a secret-related field'
+  exit 1
+fi
+echo 'NATIVE REFUSAL OUTPUT (exact-match asserted; no secret-bearing data):'
+cat "$TMP/native-conflict.log"
+echo 'PASS: native sing-box refusal includes stop and disable commands without secrets'
 [ "$(pidof sing-box | awk '{print $1}')" = "$native_pid" ] || {
   echo 'FAIL: Parallax changed native sing-box PID'; exit 1
 }
