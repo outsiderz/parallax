@@ -30,6 +30,8 @@ class MVPC1Contract(unittest.TestCase):
         self.assertIn("lstat(path)", permissions)
         self.assertIn("st.gid", permissions)
         self.assertIn("native sing-box is running", cli)
+        self.assertIn("/etc/init.d/sing-box stop", cli)
+        self.assertIn("/etc/init.d/sing-box disable", cli)
         self.assertIn("pidof_ours", cli)
         gate = (ROOT/"parallax/files/usr/share/parallax/singbox_gate.uc").read_text()
         self.assertIn("doc.inbounds", gate)
@@ -41,6 +43,16 @@ class MVPC1Contract(unittest.TestCase):
         self.assertIn("/etc/init.d/parallax-singbox disable", make)
         self.assertIn("PKG_VERSION:=0.3.0", make)
         self.assertIn("PKG_RELEASE:=1", make)
+
+    def test_mvp_c1_status_and_respawn_gate(self):
+        daemon = (ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()
+        guest = (ROOT/"tests/mvp_c1_guest.sh").read_text()
+        self.assertIn("phase: 'mvp-c1'", daemon)
+        self.assertIn("singbox: isolatedSingbox()", daemon)
+        self.assertIn("pid: null", daemon)
+        self.assertIn("parallax-sb", daemon)
+        self.assertIn("repeated kill -9 exhausted bounded procd respawn", guest)
+        self.assertIn("unbounded procd respawn", guest)
 
     def test_no_network_operations(self):
         src = (ROOT/"parallax/files/usr/share/parallax/singbox.sh").read_text()
