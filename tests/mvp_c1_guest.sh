@@ -191,6 +191,12 @@ echo "$status" | grep -q "uid=$uid "
 ubus call service list '{"name":"parallax-singbox","verbose":true}' |
   grep -Fq '"parallax-singbox"'
 echo 'PASS: positive control without running native sing-box: Parallax starts successfully'
+status_json="$(ubus call parallax status '{}')"
+printf '%s\n' "$status_json" | jsonfilter -e '@.phase' | grep -qx 'mvp-c1' || { echo 'FAIL: status phase'; exit 1; }
+printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.running' | grep -qx 'true' || { echo 'FAIL: status running flag'; exit 1; }
+printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.user' | grep -qx 'parallax-sb' || { echo 'FAIL: status user'; exit 1; }
+printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.pid' | grep -qx "$pid" || { echo 'FAIL: status PID'; exit 1; }
+echo 'PASS: read-only status phase=mvp-c1 singbox running/pid/user'
 echo 'PASS: manual procd instance running as parallax-sb; private config root:group 0640'
 
 kill -9 "$pid"
@@ -238,6 +244,9 @@ for tick in $(seq 1 12); do
   fi
 done
 echo 'PASS: repeated kill -9 exhausted bounded procd respawn; instance remains stopped'
+status_json="$(ubus call parallax status '{}')"
+printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.running' | grep -qx 'false' || { echo 'FAIL: status still running after exhaustion'; exit 1; }
+echo 'PASS: status reports separate instance stopped after respawn limit'
 
 parallax singbox stop >/dev/null
 parallax singbox status | grep -q '^stopped '
