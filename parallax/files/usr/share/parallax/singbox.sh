@@ -37,7 +37,7 @@ native_conflict() {
   # No inbound sockets in c1; nevertheless fail closed if a native instance
   # runs and its port/process ownership cannot be conclusively disjoint.
   if printf '%s\n' "$s" | grep -Eq '"running"[[:space:]]*:[[:space:]]*true'; then
-    fail 'native sing-box is running (potential port conflict); no changes made'
+    fail 'native sing-box is running; Parallax was NOT started. To switch services intentionally, run: /etc/init.d/sing-box stop ; /etc/init.d/sing-box disable . These commands are guidance only; Parallax never executes them or changes native configuration.'
   fi
 }
 runtime_dir() {
