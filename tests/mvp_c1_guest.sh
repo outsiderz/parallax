@@ -216,31 +216,48 @@ done
 echo 'PASS: kill -9 recovered through limited procd respawn with same non-root UID'
 
 # Separate finite-respawn regression: procd respawn 3600 5 3.
-# Kill the process repeatedly before the respawn threshold can reset.
-# The last kill must leave the service stopped for an observation window;
-# if it resurrects forever this test fails.
-echo 'RESPAWN LIMIT: verify the supervisor eventually stops restarting'
+# A transient absence is NOT proof that retry budget has been exhausted.
+# After each crash, observe for a full 40 seconds, long enough for delayed
+# procd restarts; only classify as exhausted after the entire interval stays
+# stopped. Bound the number of crash cycles to fail on unlimited restarts.
+echo 'RESPAWN LIMIT: real repeated kill -9 with 40-second quiet-window verification'
 current="$restarted"
 exhausted=0
 for attempt in $(seq 1 8); do
-  kill -9 "$current" 2>/dev/null || :
+  [ -n "$current" ] && kill -0 "$current" 2>/dev/null || {
+    echo "FAIL: respawn test lost the expected process before kill cycle $attempt"
+    exit 1
+  }
+  echo "RESPAWN KILL: cycle=$attempt pid=$current"
+  kill -9 "$current"
   next=''
-  for tick in $(seq 1 15); do
+  for tick in $(seq 1 40); do
     sleep 1
-    next="$(parallax singbox status | sed -n 's/^running pid=\\([0-9]*\\).*/\\1/p')"
-    [ -n "$next" ] && [ "$next" != "$current" ] && break
+    observed="$(parallax singbox status | sed -n 's/^running pid=\\([0-9]*\\).*/\\1/p')"
+    if [ -n "$observed" ] && [ "$observed" != "$current" ]; then
+      next="$observed"
+      echo "RESPAWN OBSERVED: cycle=$attempt tick=$tick pid=$next"
+      break
+    fi
+    # If the killed PID persists as a zombie, it is not a live replacement.
   done
-  if [ -z "$next" ] || [ "$next" = "$current" ]; then
+  if [ -z "$next" ]; then
     exhausted=1
+    echo "RESPAWN EXHAUSTED: cycle=$attempt no process for 40 seconds"
     break
   fi
   current="$next"
 done
-[ "$exhausted" = 1 ] || { echo 'FAIL: unbounded procd respawn after repeated kill -9'; exit 1; }
-for tick in $(seq 1 12); do
+[ "$exhausted" = 1 ] || {
+  echo 'FAIL: procd kept restarting sing-box across eight crash cycles'
+  exit 1
+}
+# Verify the process stays absent, not just temporarily absent between retries.
+for tick in $(seq 1 15); do
   sleep 1
   if parallax singbox status | grep -q '^running '; then
-    echo 'FAIL: sing-box resurrected after respawn was exhausted'; exit 1
+    echo "FAIL: process restarted after exhausted 40-second interval (tick=$tick)"
+    exit 1
   fi
 done
 echo 'PASS: repeated kill -9 exhausted bounded procd respawn; instance remains stopped'
