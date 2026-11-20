@@ -1,4 +1,4 @@
-# Parallax 0.2.0 — remove vs explicit purge
+# Parallax 0.3.1 — operations, uninstall and explicit purge
 
 ## Standard uninstall (preserves user data)
 
@@ -84,7 +84,7 @@ No procedure here touches Forkop/Podkop/Tachyon, native routing or VPNs.
 
 ## MVP-c1: native sing-box interlock and operator recovery
 
-The stock OpenWrt `sing-box` APK may automatically **enable its own init service** when installed. Its boot policy is independent of Parallax. For safety, MVP-c1 refuses to start its separate inbound-free `parallax-singbox` instance whenever the native `sing-box` procd service is running. It does not stop, disable, restart, edit, or otherwise mutate native sing-box. Its error contains no proxy config, keys or credentials, only these administrator-run commands:
+In the tested OpenWrt 25.12.6 QEMU image, installing the stock `sing-box` APK **automatically enables its native init service** (`/etc/init.d/sing-box`). Treat it as potentially running and boot-enabled after package installation. Its boot policy is independent of Parallax. For safety, MVP-c1 refuses to start its separate inbound-free `parallax-singbox` instance whenever the native `sing-box` procd service is running. It does not stop, disable, restart, edit, or otherwise mutate native sing-box. Its error contains no proxy config, keys or credentials, only these administrator-run commands:
 
 ```sh
 /etc/init.d/sing-box stop
@@ -95,3 +95,21 @@ parallax singbox start
 Only execute the first two commands if the administrator has intentionally chosen to stop the existing VPN; they **will interrupt** any traffic relying on the native service. Check `ubus call service list '{"name":"sing-box","verbose":true}'` and `/etc/init.d/sing-box enabled` first. Do not confuse stopping the native service with terminating Parallax's own process. Parallax never runs the suggested native-service commands itself.
 
 `ubus call parallax status '{}'` reports `phase: mvp-c1` and a read-only `singbox` object with `running`, `pid`, and `user`; `pid` is `null` when stopped. This is informational only and does not grant rpcd permission to start or stop a service.
+
+
+## MVP-c1: bounded procd respawn and operator status
+
+Parallax uses a **separate** procd instance, not the native `sing-box` service. Its init script sets `procd_set_param respawn 3600 5 3`: a 3600-second threshold, a 5-second restart delay and a limit of 3 crash attempts in that threshold window. The QEMU gate actually issued repeated `kill -9` to the isolated process: after the first and second abrupt deaths, procd restarted it approximately 5 seconds later; **after the third abrupt death within the 3600-second window, it remained stopped**, confirmed by a 40-second no-replacement interval plus another 15 seconds of observation. The bounded behavior means it must not enter an endless restart loop.
+
+An administrator can check the actual state without changing it:
+
+```sh
+ubus call parallax status '{}'
+parallax singbox status
+```
+
+After exhaustion, the read-only `parallax status` reports `phase: mvp-c1` and `singbox: { running: false, pid: null, user: "parallax-sb" }`. It shows that **the isolated process is stopped**; these fields do not independently prove why it stopped, so consult `logread` and the procd service state before manually starting it again. An administrator must diagnose the crash before issuing `parallax singbox start`; this is not an automatic recovery promise. Neither status, respawn nor startup is allowed to change routing, nftables, DNS or the stock sing-box service.
+
+## MVP-c1: release 0.3.1 version matrix
+
+All three packages must share the exact release `0.3.1-r1`: `parallax`, `luci-app-parallax`, and the generated `luci-i18n-parallax-ru` package (built by `luci.mk` from the LuCI translation `po/ru/parallax.po`). The QEMU build checks the resulting three APK filenames and emits `package-version-consistency.log`; host tests also compare Makefile versions with the CLI, daemon and installed version file.
