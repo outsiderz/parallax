@@ -1,35 +1,73 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# Read-only CLI for MVP (a); no shell-sourced user inputs.
+# Private config-only CLI for MVP (b); no shell-sourced user inputs.
 
-VERSION='0.1.0'
+VERSION='0.2.0'
 
 usage() {
     cat <<'USAGE'
 Usage: parallax <command>
   version     Print Parallax version
-  check       Validate platform and MVP-a UCI settings (read-only)
+  check       Validate platform and UCI v2 settings (read-only)
   status      Read the live read-only ubus status
   ping        Ping the ubus daemon
+  render      Generate private candidate JSON in /run/parallax (no proxy start)
+  validate    Generate candidate and run sing-box check (no proxy start)
+  diff        Compare active vs validated candidate hashes (secrets redacted)
+  apply --config-only   Save a validated revision (never start sing-box)
+  history     List bounded revision metadata (no secrets)
+  rollback REVISION    Restore validated earlier revision (config-only)
+  purge --confirm-delete-all   Stop service and delete all Parallax user data
   help        Show this help
 
-MVP-a does NOT implement routing, sing-box, VPN or DNS actions.
+MVP-b development branch: render/validate/apply/rollback are CONFIG ONLY.
+No proxy, VPN, nftables, routes or DNS changes.
 To enable the status daemon: uci set parallax.main.enabled=1;
                               uci commit parallax;
                               /etc/init.d/parallax restart
 USAGE
 }
 
+
+make_candidate() {
+    if [ "$(id -u)" != '0' ]; then
+        echo 'Parallax render requires root for protected credential access' >&2
+        return 1
+    fi
+    . /usr/share/parallax/platform.sh
+    parallax_check_platform || return 1
+    parallax_check_config || return 1
+
+    umask 077
+    if [ -L /run/parallax ]; then
+        echo 'Unsafe runtime directory' >&2
+        return 1
+    fi
+    mkdir -p /run/parallax || return 1
+    chmod 0700 /run/parallax || return 1
+    # Ownership and permissions are checked by render.uc using fs.lstat.
+    local candidate
+    candidate="$(mktemp /run/parallax/candidate.XXXXXXXX)" || return 1
+
+    if ! /usr/bin/ucode /usr/share/parallax/render.uc > "$candidate"; then
+        rm -f "$candidate"
+        echo 'Parallax candidate generation rejected' >&2
+        return 1
+    fi
+    chmod 0600 "$candidate" || { rm -f "$candidate"; return 1; }
+    printf '%s\n' "$candidate"
+}
+
 case "${1:-help}" in
     version)
-        printf 'Parallax %s (MVP-a)\n' "$VERSION"
+        printf 'Parallax %s (MVP-b development)\n' "$VERSION"
         ;;
     check)
         # shellcheck disable=SC1091
         . /usr/share/parallax/platform.sh
         parallax_check_platform || exit 1
         parallax_check_config || exit 1
-        echo 'OK: platform and MVP-a UCI configuration valid (routing untouched)'
+        echo 'OK: platform and MVP-b UCI configuration valid (routing untouched)'
         ;;
     status)
         if ! ubus call parallax status '{}'; then
@@ -42,6 +80,79 @@ case "${1:-help}" in
             echo 'Parallax daemon is stopped or unavailable' >&2
             exit 1
         fi
+        ;;
+    render)
+        candidate="$(make_candidate)" || exit 1
+        printf 'Candidate written privately: %s\n' "$candidate"
+        ;;
+    validate)
+        if ! command -v sing-box >/dev/null 2>&1; then
+            echo 'sing-box not installed; cannot validate candidate' >&2
+            exit 1
+        fi
+        candidate="$(make_candidate)" || exit 1
+        if ! sing-box check -c "$candidate" >/dev/null 2>&1; then
+            rm -f "$candidate"
+            echo 'sing-box check rejected generated configuration' >&2
+            exit 1
+        fi
+        rm -f "$candidate"
+        echo 'OK: generated JSON passed sing-box check (routing untouched)'
+        ;;
+    diff)
+        command -v sing-box >/dev/null 2>&1 || {
+            echo 'sing-box not installed; cannot diff unvalidated candidate' >&2
+            exit 1
+        }
+        candidate="$(make_candidate)" || exit 1
+        /usr/bin/ucode /usr/share/parallax/transaction.uc diff "$candidate"
+        result=$?
+        rm -f "$candidate"
+        exit "$result"
+        ;;
+    apply)
+        [ "$#" = 2 ] && [ "$2" = '--config-only' ] || {
+            echo 'Only parallax apply --config-only is supported' >&2
+            exit 2
+        }
+        command -v sing-box >/dev/null 2>&1 || {
+            echo 'sing-box not installed; cannot apply configuration' >&2
+            exit 1
+        }
+        candidate="$(make_candidate)" || exit 1
+        if ! sing-box check -c "$candidate" >/dev/null 2>&1; then
+            rm -f "$candidate"
+            echo 'sing-box check rejected generated configuration' >&2
+            exit 1
+        fi
+        /usr/bin/ucode /usr/share/parallax/transaction.uc apply "$candidate"
+        result=$?
+        rm -f "$candidate"
+        exit "$result"
+        ;;
+    history)
+        [ "$#" = 1 ] || exit 2
+        /usr/bin/ucode /usr/share/parallax/transaction.uc history
+        ;;
+    rollback)
+        [ "$#" = 2 ] || {
+            echo 'Usage: parallax rollback REVISION' >&2
+            exit 2
+        }
+        /usr/bin/ucode /usr/share/parallax/transaction.uc rollback "$2"
+        ;;
+    purge)
+        [ "$#" = 2 ] && [ "$2" = '--confirm-delete-all' ] || {
+            echo 'Usage: parallax purge --confirm-delete-all' >&2
+            exit 2
+        }
+        [ "$(id -u)" = '0' ] || {
+            echo 'Parallax purge requires root' >&2
+            exit 1
+        }
+        /etc/init.d/parallax stop || exit 1
+        /etc/init.d/parallax disable || exit 1
+        /usr/bin/ucode /usr/share/parallax/transaction.uc purge --confirm-delete-all
         ;;
     help|-h|--help)
         usage

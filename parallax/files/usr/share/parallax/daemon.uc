@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-// Parallax MVP (a): safe event-driven service skeleton.
+// Parallax MVP (b): safe event-driven status service skeleton.
 // No sing-box process, routing, DNS or firewall mutations are performed here.
 
 import * as uloop from 'uloop';
 import * as ubus from 'ubus';
 import { cursor } from 'uci';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 let heartbeat_seq = 0;
 
 function status() {
@@ -17,7 +17,7 @@ function status() {
     return {
         name: 'parallax',
         version: VERSION,
-        phase: 'mvp-a',
+        phase: 'mvp-b',
         daemon_running: true,
         routing_active: false,
         proxy_running: false,
@@ -36,10 +36,18 @@ if (!connection)
 
 const published = connection.publish('parallax', {
     status: {
+        // uhttpd-mod-ubus injects ubus_rpc_session into HTTP /ubus calls.
+        // The native ucode ubus method validator rejects undeclared arguments.
+        // Declare this transport-only string; handlers remain read-only.
+        args: { ubus_rpc_session: '' },
         call: (req, msg) => req.reply(status())
     },
     ping: {
-        call: (req, msg) => req.reply({ ok: true, name: 'parallax', phase: 'mvp-a' })
+        // uhttpd-mod-ubus injects ubus_rpc_session into HTTP /ubus calls.
+        // The native ucode ubus method validator rejects undeclared arguments.
+        // Declare this transport-only string; handlers remain read-only.
+        args: { ubus_rpc_session: '' },
+        call: (req, msg) => req.reply({ ok: true, name: 'parallax', phase: 'mvp-b' })
     }
 });
 if (!published)
@@ -49,7 +57,7 @@ const heartbeat = uloop.interval(10000, () => heartbeat_seq++);
 if (!heartbeat)
     die('Parallax: cannot initialize heartbeat\n');
 
-printf('Parallax %s (MVP-a) started: routing disabled\n', VERSION);
+printf('Parallax %s (MVP-b) started: routing disabled\n', VERSION);
 const result = uloop.run();
 connection.disconnect();
 if (result == null)

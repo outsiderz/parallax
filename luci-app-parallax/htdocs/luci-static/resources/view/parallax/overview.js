@@ -20,8 +20,8 @@ function renderStatus(node, state) {
         _('Version: ') + (state.version || '?'),
         _('Phase: ') + (state.phase || '?'),
         _('Heartbeat: ') + (state.heartbeat_seq != null ? state.heartbeat_seq : 0),
-        _('Routing: disabled in MVP-a'),
-        _('Proxy: not started in MVP-a')
+        _('Routing: disabled in MVP-b'),
+        _('Proxy: not started in MVP-b')
     ].join('\n');
 }
 
@@ -41,7 +41,7 @@ return view.extend({
         return E('div', {}, [
             E('h2', {}, _('Parallax')),
             E('div', { 'class': 'alert-message warning' },
-                _('MVP-a is a read-only scaffold. No routing, DNS or firewall changes are made.')),
+                _('MVP-b is a read-only scaffold. No routing, DNS or firewall changes are made.')),
             E('p', {}, _('Enable the status service from SSH after validating the platform and configuration.')),
             status
         ]);

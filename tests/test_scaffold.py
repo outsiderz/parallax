@@ -12,10 +12,21 @@ class ScaffoldTests(unittest.TestCase):
         luci=(ROOT/"luci-app-parallax/Makefile").read_text()
         self.assertIn("PKG_NAME:=parallax",core)
         self.assertIn("ucode-mod-ubus",core)
+        self.assertIn("render.uc",core)
+        self.assertIn("ucode-mod-fs",core)
         self.assertIn("LUCI_DEPENDS:=+luci-base +parallax",luci)
         self.assertIn("feeds/luci/luci.mk",luci)
         # include/scan.mk discovers LuCI recipes via the exact marker.
         self.assertIn("call BuildPackage",luci)
+        self.assertIn("define Package/parallax/prerm", core)
+        self.assertIn("define Package/parallax/postinst", core)
+        self.assertIn(".reinstall-stopped", core)
+        self.assertIn("PKG_RELEASE:=3", core)
+        self.assertIn("PKG_RELEASE:=3", luci)
+        self.assertIn("PKG_PO_VERSION:=0.2.0-r3", luci)
+        self.assertIn('$${IPKG_INSTROOT}', core)
+        self.assertIn('$${PKG_UPGRADE}', core)
+        self.assertIn('$$(uci -q get parallax.main.enabled', core)
 
     def test_shell_syntax(self):
         for file in ["parallax/files/etc/init.d/parallax",
@@ -27,7 +38,12 @@ class ScaffoldTests(unittest.TestCase):
     def test_safe_uci(self):
         text=(ROOT/"parallax/files/etc/config/parallax").read_text()
         self.assertIn("option enabled '0'",text)
+        self.assertIn("option schema_version '2'",text)
+        self.assertIn("option apply_mode 'config_only'",text)
         self.assertIn("option mode 'selective'",text)
+        init=(ROOT/"parallax/files/etc/init.d/parallax").read_text()
+        self.assertIn("[ ! -f /etc/parallax/.reinstall-stopped ] || return 0", init)
+
 
     def test_daemon_read_only(self):
         code=(ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()
@@ -35,6 +51,9 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("routing_active: false",code)
         self.assertIn("status: {",code)
         self.assertIn("ping: {",code)
+        # uhttpd-mod-ubus forwards a SID to the ubus handler on HTTP calls.
+        # Each method must explicitly declare it or ucode rejects the request.
+        self.assertEqual(code.count("args: { ubus_rpc_session: '' }"), 2)
 
     def test_luci_acl(self):
         acl=json.loads((ROOT/"luci-app-parallax/root/usr/share/rpcd/acl.d/luci-app-parallax.json").read_text())
@@ -45,7 +64,15 @@ class ScaffoldTests(unittest.TestCase):
         path=ROOT/"parallax/files/usr/bin/parallax"
         out=subprocess.run(["sh",str(path),"version"],capture_output=True,text=True)
         self.assertEqual(out.returncode,0)
-        self.assertIn("0.1.0",out.stdout)
+        self.assertIn("0.2.0",out.stdout)
+        core=(ROOT/"parallax/Makefile").read_text()
+        luci=(ROOT/"luci-app-parallax/Makefile").read_text()
+        self.assertIn("PKG_VERSION:=0.2.0", core)
+        self.assertIn("PKG_VERSION:=0.2.0", luci)
+        self.assertEqual((ROOT/"parallax/files/usr/share/parallax/version").read_text().strip(), "0.2.0")
+        daemon=(ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()
+        self.assertIn("const VERSION = '0.2.0';", daemon)
+        self.assertIn("phase: 'mvp-b'", daemon)
 
 if __name__ == "__main__":
     unittest.main()
