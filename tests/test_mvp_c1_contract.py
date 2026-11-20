@@ -41,7 +41,7 @@ class MVPC1Contract(unittest.TestCase):
         make = (ROOT/"parallax/Makefile").read_text()
         self.assertIn("USERID:=parallax-sb:parallax-sb", make)
         self.assertIn("/etc/init.d/parallax-singbox disable", make)
-        self.assertIn("PKG_VERSION:=0.3.0", make)
+        self.assertIn("PKG_VERSION:=0.3.1", make)
         self.assertIn("PKG_RELEASE:=1", make)
 
     def test_mvp_c1_status_and_respawn_gate(self):
