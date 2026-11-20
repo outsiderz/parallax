@@ -45,8 +45,8 @@ runtime_dir() {
   gid="$(id -g parallax-sb)"
   [ ! -L "$RUN" ] || fail 'runtime path is a symlink'
   if [ -d "$RUN" ]; then
-    st="$(stat -c '%u:%g:%a' "$RUN")" || fail 'cannot inspect runtime'
-    [ "$st" = "0:$gid:710" ] || fail 'unsafe runtime permissions'
+    /usr/bin/ucode /usr/share/parallax/singbox_permissions.uc run "$gid" >/dev/null ||
+      fail 'unsafe runtime ownership/permissions'
   else
     [ ! -e "$RUN" ] || fail 'runtime path is not a directory'
     mkdir -m 0710 "$RUN" || fail 'runtime mkdir failed'
@@ -78,7 +78,7 @@ pick_revision() {
   fi
   [ -f "$LKG" ] && [ ! -L "$LKG" ] ||
     fail 'active revision invalid; no last-known-good revision'
-  [ "$(stat -c '%u:%a' "$LKG")" = '0:600' ] ||
+  /usr/bin/ucode /usr/share/parallax/singbox_permissions.uc last-good >/dev/null ||
     fail 'last-known-good reference is unsafe'
   ref="$(cat "$LKG")"
   printf '%s\n' "$ref" | grep -Eq '^rev-[0-9]{8}T[0-9]{6}Z-[0-9]+-[0-9a-f]{12}$' ||
@@ -157,6 +157,12 @@ start_all() {
   runtime_dir
   printf 'requested\n' >"$RUN/requested"
   chmod 0600 "$RUN/requested"
+  # Preflight in a subshell: fail early and clean volatile marker if there
+  # is no approved source. procd also rechecks at the final start boundary.
+  if ! (prepare); then
+    rm -f "$RUN/requested" "$RUN/config.json" "$RUN/selected.ref"
+    fail 'preflight refused startup'
+  fi
   "$INIT" start || { rm -f "$RUN/requested"; fail 'procd start failed'; }
   expected="$(id -u parallax-sb)"
   for i in $(seq 1 30); do

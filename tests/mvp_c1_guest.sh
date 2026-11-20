@@ -77,10 +77,10 @@ pid="$(printf '%s\n' "$status" | sed -n 's/^running pid=\([0-9]*\).*/\1/p')"
 proc_uid="$(awk '/^Uid:/ {print $2}' "/proc/$pid/status")"
 [ "$proc_uid" = "$uid" ] || { echo 'FAIL: sing-box process not unprivileged'; exit 1; }
 echo "$status" | grep -q "uid=$uid "
-test "$(stat -c '%u:%g:%a' "$RUN")" = "0:$gid:710"
-test "$(stat -c '%u:%g:%a' "$RUN/config.json")" = "0:$gid:640"
-test "$(stat -c '%u:%a' "$RUN/selected.ref")" = "0:600"
-test "$(stat -c '%u:%a' "$STORE/last-good.ref")" = "0:600"
+/usr/bin/ucode /usr/share/parallax/singbox_permissions.uc run "$gid" >/dev/null
+/usr/bin/ucode /usr/share/parallax/singbox_permissions.uc config "$gid" >/dev/null
+/usr/bin/ucode /usr/share/parallax/singbox_permissions.uc selected >/dev/null
+/usr/bin/ucode /usr/share/parallax/singbox_permissions.uc last-good >/dev/null
 [ ! -L "$RUN/config.json" ] && [ ! -L "$STORE/last-good.ref" ]
 /usr/bin/ucode /usr/share/parallax/singbox_gate.uc "$STORE/active.json" >/dev/null
 # Verify process is supervised by our own procd instance, not native sing-box.

@@ -100,6 +100,7 @@ define Package/parallax/install
 	$(INSTALL_DATA) ./files/usr/share/parallax/daemon.uc $(1)/usr/share/parallax/daemon.uc
 	$(INSTALL_BIN) ./files/usr/share/parallax/singbox.sh $(1)/usr/share/parallax/singbox.sh
 	$(INSTALL_DATA) ./files/usr/share/parallax/singbox_gate.uc $(1)/usr/share/parallax/singbox_gate.uc
+	$(INSTALL_DATA) ./files/usr/share/parallax/singbox_permissions.uc $(1)/usr/share/parallax/singbox_permissions.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/render.uc $(1)/usr/share/parallax/render.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/transaction.uc $(1)/usr/share/parallax/transaction.uc
 	$(INSTALL_DATA) ./files/usr/share/parallax/platform.sh $(1)/usr/share/parallax/platform.sh
