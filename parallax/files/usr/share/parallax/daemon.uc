@@ -7,7 +7,7 @@ import * as ubus from 'ubus';
 import { cursor } from 'uci';
 import { glob, readfile } from 'fs';
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 
 // Read-only process discovery; never change native sing-box or kernel state.
 function isolatedSingbox() {
