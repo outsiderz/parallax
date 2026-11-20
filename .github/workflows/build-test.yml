@@ -148,6 +148,10 @@ jobs:
           done
           test -f "$REPORT_DIR/qemu/mvp-c1-uci-diff.txt"
           test ! -s "$REPORT_DIR/qemu/mvp-c1-uci-diff.txt"
+          grep -Fq 'PASS: real native sing-box procd/ubus/process detected' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: positive control without running native sing-box' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: native service is stopped and disabled; configs restored before positive control' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: native sing-box still stopped/disabled with original configs after all MVP-c1 subtests' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: kill -9 recovered' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: invalid active config falls back' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: apk del leaves no parallax-singbox' "$REPORT_DIR/qemu/mvp-c1-remove.log"
