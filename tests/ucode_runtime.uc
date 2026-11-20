@@ -17,9 +17,10 @@ if (!conn)
     die('FAIL: ubus.connect()\n');
 
 const s = conn.call('parallax', 'status', {});
-if (!s || s.name != 'parallax' || s.phase != 'mvp-b' ||
-    s.version != '0.3.0' || s.daemon_running != true || s.routing_active != false ||
-    s.proxy_running != false || s.config_enabled != true)
+if (!s || s.name != 'parallax' || s.phase != 'mvp-c1' ||
+    s.version != '0.3.1' || s.daemon_running != true || s.routing_active != false ||
+    s.proxy_running != false || !s.singbox ||
+    s.singbox.running != false || s.singbox.pid != null || s.singbox.user != 'parallax-sb' || s.config_enabled != true)
     die('FAIL: invalid ubus status\n');
 
 const p = conn.call('parallax', 'ping', {});

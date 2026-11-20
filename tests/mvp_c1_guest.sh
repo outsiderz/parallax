@@ -118,10 +118,27 @@ if parallax singbox start >"$TMP/native-conflict.log" 2>&1; then
   echo 'FAIL: Parallax started while real native sing-box procd service was running'
   exit 1
 fi
-grep -Fq 'native sing-box is running' "$TMP/native-conflict.log" || {
-  echo 'FAIL: Parallax did not identify real native service conflict'
-  cat "$TMP/native-conflict.log"; exit 1
+# The rejection must be a single stable, secret-free operator message.
+# Never print unexpected output: it might contain credentials or proxy JSON.
+expected_refusal='Parallax singbox: native sing-box is running; Parallax was NOT started. To switch services intentionally, run: /etc/init.d/sing-box stop ; /etc/init.d/sing-box disable . These commands are guidance only; Parallax never executes them or changes native configuration.'
+actual_refusal="$(cat "$TMP/native-conflict.log")"
+[ "$actual_refusal" = "$expected_refusal" ] || {
+  echo 'FAIL: native sing-box refusal differs from approved secret-free message'
+  exit 1
 }
+for command in '/etc/init.d/sing-box stop' '/etc/init.d/sing-box disable'; do
+  grep -Fq "$command" "$TMP/native-conflict.log" || {
+    echo 'FAIL: native-service refusal omitted a required operator command'
+    exit 1
+  }
+done
+if printf '%s\n' "$actual_refusal" | grep -Eqi '(password|private_key|credential|uuid|token|secret)'; then
+  echo 'FAIL: native-service refusal contains a secret-related field'
+  exit 1
+fi
+echo 'NATIVE REFUSAL OUTPUT (exact-match asserted; no secret-bearing data):'
+cat "$TMP/native-conflict.log"
+echo 'PASS: native sing-box refusal includes stop and disable commands without secrets'
 [ "$(pidof sing-box | awk '{print $1}')" = "$native_pid" ] || {
   echo 'FAIL: Parallax changed native sing-box PID'; exit 1
 }
@@ -191,6 +208,12 @@ echo "$status" | grep -q "uid=$uid "
 ubus call service list '{"name":"parallax-singbox","verbose":true}' |
   grep -Fq '"parallax-singbox"'
 echo 'PASS: positive control without running native sing-box: Parallax starts successfully'
+status_json="$(ubus call parallax status '{}')"
+printf '%s\n' "$status_json" | jsonfilter -e '@.phase' | grep -qx 'mvp-c1' || { echo 'FAIL: status phase'; exit 1; }
+printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.running' | grep -qx 'true' || { echo 'FAIL: status running flag'; exit 1; }
+printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.user' | grep -qx 'parallax-sb' || { echo 'FAIL: status user'; exit 1; }
+printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.pid' | grep -qx "$pid" || { echo 'FAIL: status PID'; exit 1; }
+echo 'PASS: read-only status phase=mvp-c1 singbox running/pid/user'
 echo 'PASS: manual procd instance running as parallax-sb; private config root:group 0640'
 
 kill -9 "$pid"
@@ -208,6 +231,57 @@ done
 [ "$(awk '/^Uid:/ {print $2}' "/proc/$restarted/status")" = "$uid" ] ||
   { echo 'FAIL: respawn changed UID'; exit 1; }
 echo 'PASS: kill -9 recovered through limited procd respawn with same non-root UID'
+
+# Separate finite-respawn regression: procd respawn 3600 5 3.
+# A transient absence is NOT proof that retry budget has been exhausted.
+# After each crash, observe for a full 40 seconds, long enough for delayed
+# procd restarts; only classify as exhausted after the entire interval stays
+# stopped. Bound the number of crash cycles to fail on unlimited restarts.
+echo 'RESPAWN LIMIT: real repeated kill -9 with 40-second quiet-window verification'
+current="$restarted"
+exhausted=0
+for attempt in $(seq 1 8); do
+  [ -n "$current" ] && kill -0 "$current" 2>/dev/null || {
+    echo "FAIL: respawn test lost the expected process before kill cycle $attempt"
+    exit 1
+  }
+  echo "RESPAWN KILL: cycle=$attempt pid=$current"
+  kill -9 "$current"
+  next=''
+  for tick in $(seq 1 40); do
+    sleep 1
+    observed="$(parallax singbox status | sed -n 's/^running pid=\([0-9]*\).*/\1/p')"
+    if [ -n "$observed" ] && [ "$observed" != "$current" ]; then
+      next="$observed"
+      echo "RESPAWN OBSERVED: cycle=$attempt tick=$tick pid=$next"
+      break
+    fi
+    # If the killed PID persists as a zombie, it is not a live replacement.
+  done
+  if [ -z "$next" ]; then
+    exhausted=1
+    echo "RESPAWN EXHAUSTED: cycle=$attempt no process for 40 seconds"
+    break
+  fi
+  current="$next"
+done
+[ "$exhausted" = 1 ] || {
+  echo 'FAIL: procd kept restarting sing-box across eight crash cycles'
+  exit 1
+}
+# Verify the process stays absent, not just temporarily absent between retries.
+for tick in $(seq 1 15); do
+  sleep 1
+  if parallax singbox status | grep -q '^running '; then
+    echo "FAIL: process restarted after exhausted 40-second interval (tick=$tick)"
+    exit 1
+  fi
+done
+echo 'PASS: repeated kill -9 exhausted bounded procd respawn; instance remains stopped'
+status_json="$(ubus call parallax status '{}')"
+printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.running' | grep -qx 'false' || { echo 'FAIL: status still running after exhaustion'; exit 1; }
+echo 'PASS: status reports separate instance stopped after respawn limit'
+
 parallax singbox stop >/dev/null
 parallax singbox status | grep -q '^stopped '
 [ ! -f "$RUN/config.json" ] || { echo 'FAIL: stop left runtime config'; exit 1; }

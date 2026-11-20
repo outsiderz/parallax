@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Private config-only CLI for MVP (b); no shell-sourced user inputs.
 
-VERSION='0.3.0'
+VERSION='0.3.1'
 
 usage() {
     cat <<'USAGE'
