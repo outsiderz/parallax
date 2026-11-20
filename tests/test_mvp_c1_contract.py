@@ -52,7 +52,7 @@ class MVPC1Contract(unittest.TestCase):
         self.assertIn("pid: null", daemon)
         self.assertIn("parallax-sb", daemon)
         self.assertIn("repeated kill -9 exhausted bounded procd respawn", guest)
-        self.assertIn("unbounded procd respawn", guest)
+        self.assertIn("procd kept restarting sing-box across eight crash cycles", guest)
 
     def test_no_network_operations(self):
         src = (ROOT/"parallax/files/usr/share/parallax/singbox.sh").read_text()
