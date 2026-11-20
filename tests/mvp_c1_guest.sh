@@ -17,7 +17,7 @@ cleanup() {
     mv -f "$TMP/last-good.ref" "$STORE/last-good.ref"
   fi
   parallax singbox stop >/dev/null 2>&1 || :
-  fixture_stop
+  if [ -f "$TMP/native-uci.orig" ]; then native_restore; fi
   rm -rf "$TMP"
 }
 trap cleanup EXIT
@@ -33,76 +33,90 @@ parallax singbox status | grep -q '^stopped '
 [ ! -e "$RUN/config.json" ] || { echo 'FAIL: runtime config exists before manual start'; exit 1; }
 echo 'PASS: service disabled at boot, stopped, no runtime credentials'
 
-# QEMU-only live socket fixture: start a separate sing-box process without
-# invoking or editing the native /etc/init.d/sing-box or /etc/config/sing-box.
-# Its SOCKS listener owns a real TCP port. The procd response remains mocked
-# because registering the native service would violate the isolation contract.
-FIXTURE_PID=''
-fixture_stop() {
-  if [ -n "$FIXTURE_PID" ]; then
-    kill "$FIXTURE_PID" 2>/dev/null || :
-    wait "$FIXTURE_PID" 2>/dev/null || :
-    FIXTURE_PID=''
-  fi
+# Real native OpenWrt sing-box service fixture, entirely inside disposable QEMU.
+# Save and restore both vendor config files; never impersonate ubus/procd.
+NATIVE_CONF=/etc/config/sing-box
+NATIVE_JSON=/etc/sing-box/config.json
+[ -x /etc/init.d/sing-box ] || { echo 'FAIL: native sing-box init script missing'; exit 1; }
+[ -f "$NATIVE_CONF" ] && [ -f "$NATIVE_JSON" ] || {
+  echo 'FAIL: native sing-box configuration files missing'; exit 1
 }
-cat >"$TMP/native-fixture.json" <<'JSON'
-{"log":{"level":"warn"},"inbounds":[{"type":"socks","tag":"native-fixture","listen":"127.0.0.1","listen_port":39081}],"outbounds":[{"type":"direct","tag":"direct"}]}
+cp -p "$NATIVE_CONF" "$TMP/native-uci.orig"
+cp -p "$NATIVE_JSON" "$TMP/native-json.orig"
+native_restore() {
+  /etc/init.d/sing-box stop >/dev/null 2>&1 || :
+  cp -p "$TMP/native-uci.orig" "$NATIVE_CONF"
+  cp -p "$TMP/native-json.orig" "$NATIVE_JSON"
+}
+# Cleanup on any assertion failure must restore the vendor service fixture.
+cat >"$NATIVE_JSON" <<'JSON'
+{"log":{"level":"warn"},"inbounds":[{"type":"socks","tag":"ci-native","listen":"127.0.0.1","listen_port":39081}],"outbounds":[{"type":"direct","tag":"direct"}]}
 JSON
-sing-box check -c "$TMP/native-fixture.json" >"$TMP/fixture-check.log" 2>&1 || {
-  echo 'FAIL: live socket fixture configuration was rejected'
-  cat "$TMP/fixture-check.log"
-  exit 1
+sing-box check -c "$NATIVE_JSON" >"$TMP/native-check.log" 2>&1 || {
+  echo 'FAIL: native fixture sing-box check'
+  cat "$TMP/native-check.log"; exit 1
 }
-sing-box run -c "$TMP/native-fixture.json" >"$TMP/fixture-run.log" 2>&1 &
-FIXTURE_PID=$!
+uci set sing-box.main.enabled=1
+uci commit sing-box
+/etc/init.d/sing-box start >"$TMP/native-start.log" 2>&1 || {
+  echo 'FAIL: native sing-box service could not start'
+  cat "$TMP/native-start.log"; exit 1
+}
 porthex="$(printf '%04X' 39081)"
-listening=0
+native_pid=''
 for n in $(seq 1 30); do
-  kill -0 "$FIXTURE_PID" 2>/dev/null || break
-  if awk -v port="$porthex" '$2 ~ (":" port "$") && $4 == "0A" {found=1} END {exit !found}' /proc/net/tcp; then
-    listening=1
+  native_pid="$(pidof sing-box | awk '{print $1}' || :)"
+  if [ -n "$native_pid" ] &&
+    awk -v port="$porthex" '$2 ~ (":" port "$") && $4 == "0A" {found=1} END {exit !found}' /proc/net/tcp; then
     break
   fi
   sleep 1
 done
-if [ "$listening" -ne 1 ]; then
-  echo 'FAIL: competing sing-box did not bind TCP port 39081'
-  cat "$TMP/fixture-run.log"
-  exit 1
-fi
-echo "FIXTURE: live sing-box pid=$FIXTURE_PID bound 127.0.0.1:39081"
-cat >"$TMP/ubus" <<'SH'
-#!/bin/sh
-if [ "$1" = call ] && [ "$2" = service ] && [ "$3" = list ]; then
-    case "$4" in
-      *'"name":"sing-box"'*)
-        printf '{"sing-box":{"instances":{"test":{"running":true,"pid":%s}}}}\\n' "$MVP_C1_FIXTURE_PID"
-        exit 0 ;;
-    esac
-fi
-exec /bin/ubus "$@"
-SH
-chmod 0700 "$TMP/ubus"
-if MVP_C1_FIXTURE_PID="$FIXTURE_PID" PATH="$TMP:$PATH" parallax singbox start >"$TMP/native-conflict.log" 2>&1; then
-  echo 'FAIL: live sing-box/procd conflict fixture was accepted'
+[ -n "$native_pid" ] && kill -0 "$native_pid" 2>/dev/null || {
+  echo 'FAIL: native sing-box process missing'; exit 1
+}
+awk -v port="$porthex" '$2 ~ (":" port "$") && $4 == "0A" {found=1} END {exit !found}' /proc/net/tcp || {
+  echo 'FAIL: native sing-box has no local listener'; exit 1
+}
+native_ubus="$(ubus call service list '{"name":"sing-box","verbose":true}')"
+printf '%s\n' "$native_ubus" >"$TMP/native-ubus-before.log"
+printf '%s\n' "$native_ubus" | grep -Fq '"sing-box"' || {
+  echo 'FAIL: native sing-box is not registered with real procd'; exit 1
+}
+printf '%s\n' "$native_ubus" | grep -Eq '"running"[[:space:]]*:[[:space:]]*true' || {
+  echo 'FAIL: real native procd does not report running'; exit 1
+}
+native_config_hash="$(sha256sum "$NATIVE_CONF" "$NATIVE_JSON")"
+echo "NATIVE BEFORE: pid=$native_pid socket=127.0.0.1:39081"
+echo "NATIVE BEFORE: $(printf '%s' "$native_ubus" | tr '\n' ' ' | cut -c 1-900)"
+if parallax singbox start >"$TMP/native-conflict.log" 2>&1; then
+  echo 'FAIL: Parallax started while real native sing-box procd service was running'
   exit 1
 fi
 grep -Fq 'native sing-box is running' "$TMP/native-conflict.log" || {
-  echo 'FAIL: conflict refusal did not identify competing sing-box'
-  exit 1
+  echo 'FAIL: Parallax did not identify real native service conflict'
+  cat "$TMP/native-conflict.log"; exit 1
 }
-kill -0 "$FIXTURE_PID" 2>/dev/null || {
-  echo 'FAIL: conflict refusal terminated a foreign sing-box process'
-  exit 1
+[ "$(pidof sing-box | awk '{print $1}')" = "$native_pid" ] || {
+  echo 'FAIL: Parallax changed native sing-box PID'; exit 1
+}
+kill -0 "$native_pid" 2>/dev/null || { echo 'FAIL: native sing-box stopped'; exit 1; }
+[ "$(sha256sum "$NATIVE_CONF" "$NATIVE_JSON")" = "$native_config_hash" ] || {
+  echo 'FAIL: Parallax changed native sing-box config'; exit 1
 }
 awk -v port="$porthex" '$2 ~ (":" port "$") && $4 == "0A" {found=1} END {exit !found}' /proc/net/tcp || {
-  echo 'FAIL: conflict refusal released foreign listener'
-  exit 1
+  echo 'FAIL: Parallax changed native sing-box listener'; exit 1
 }
-[ ! -e "$RUN/config.json" ] || { echo 'FAIL: conflict preflight mutated runtime'; exit 1; }
-echo 'PASS: live TCP socket occupied by competing sing-box; synthetic procd registration rejected without stopping foreign process'
-rm -f "$TMP/ubus"
-fixture_stop
+ubus call service list '{"name":"sing-box","verbose":true}' >"$TMP/native-ubus-after.log"
+grep -Fq '"running": true' "$TMP/native-ubus-after.log" || {
+  grep -Eq '"running"[[:space:]]*:[[:space:]]*true' "$TMP/native-ubus-after.log" || {
+    echo 'FAIL: native procd registration stopped'; exit 1
+  }
+}
+[ ! -e "$RUN/config.json" ] || { echo 'FAIL: conflict preflight mutated Parallax runtime'; exit 1; }
+echo "NATIVE AFTER: pid=$native_pid socket=127.0.0.1:39081"
+echo 'PASS: real native sing-box procd/ubus/process detected; PID, config hashes, socket unchanged; Parallax refused'
+native_restore
 
 parallax singbox start >"$TMP/start.log" 2>&1 || {
   echo 'FAIL: manual start failed'
