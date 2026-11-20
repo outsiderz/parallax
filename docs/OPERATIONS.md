@@ -80,3 +80,18 @@ that an anonymous SID is rejected. Only status/ping are granted in the
 read-only `luci-app-parallax` ACL; CLI apply/purge are not exposed via rpcd.
 
 No procedure here touches Forkop/Podkop/Tachyon, native routing or VPNs.
+
+
+## MVP-c1: native sing-box interlock and operator recovery
+
+The stock OpenWrt `sing-box` APK may automatically **enable its own init service** when installed. Its boot policy is independent of Parallax. For safety, MVP-c1 refuses to start its separate inbound-free `parallax-singbox` instance whenever the native `sing-box` procd service is running. It does not stop, disable, restart, edit, or otherwise mutate native sing-box. Its error contains no proxy config, keys or credentials, only these administrator-run commands:
+
+```sh
+/etc/init.d/sing-box stop
+/etc/init.d/sing-box disable
+parallax singbox start
+```
+
+Only execute the first two commands if the administrator has intentionally chosen to stop the existing VPN; they **will interrupt** any traffic relying on the native service. Check `ubus call service list '{"name":"sing-box","verbose":true}'` and `/etc/init.d/sing-box enabled` first. Do not confuse stopping the native service with terminating Parallax's own process. Parallax never runs the suggested native-service commands itself.
+
+`ubus call parallax status '{}'` reports `phase: mvp-c1` and a read-only `singbox` object with `running`, `pid`, and `user`; `pid` is `null` when stopped. This is informational only and does not grant rpcd permission to start or stop a service.
