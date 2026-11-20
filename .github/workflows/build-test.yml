@@ -153,6 +153,9 @@ jobs:
           grep -Fq 'PASS: native service is stopped and disabled; configs restored before positive control' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: native sing-box still stopped/disabled with original configs after all MVP-c1 subtests' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: kill -9 recovered' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: repeated kill -9 exhausted bounded procd respawn; instance remains stopped' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: read-only status phase=mvp-c1 singbox running/pid/user' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: status reports separate instance stopped after respawn limit' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: invalid active config falls back' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: apk del leaves no parallax-singbox' "$REPORT_DIR/qemu/mvp-c1-remove.log"
           echo 'PASS: independently gated MVP-c1 QEMU evidence and zero network diffs'
