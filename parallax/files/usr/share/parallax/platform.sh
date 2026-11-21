@@ -50,8 +50,8 @@ parallax_check_config() {
     mode="$(uci -q get parallax.main.mode)" || return 1
     apply_mode="$(uci -q get parallax.main.apply_mode)" || return 1
     default_outbound="$(uci -q get parallax.main.default_outbound)" || return 1
-    if [ "$schema" != '2' ]; then
-        echo 'Unsupported parallax UCI schema_version (expected 2)' >&2
+    if [ "$schema" != '2' ] && [ "$schema" != '3' ]; then
+        echo 'Unsupported parallax UCI schema_version (expected 2 or 3)' >&2
         return 1
     fi
     case "$enabled" in
