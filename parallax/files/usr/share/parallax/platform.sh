@@ -50,8 +50,8 @@ parallax_check_config() {
     mode="$(uci -q get parallax.main.mode)" || return 1
     apply_mode="$(uci -q get parallax.main.apply_mode)" || return 1
     default_outbound="$(uci -q get parallax.main.default_outbound)" || return 1
-    if [ "$schema" != '2' ]; then
-        echo 'Unsupported parallax UCI schema_version (expected 2)' >&2
+    if [ "$schema" != '2' ] && [ "$schema" != '3' ]; then
+        echo 'Unsupported parallax UCI schema_version (expected 2 or 3)' >&2
         return 1
     fi
     case "$enabled" in
@@ -65,6 +65,10 @@ parallax_check_config() {
     case "$default_outbound" in
         ''|*[!a-zA-Z0-9_-]*) echo 'Invalid default_outbound tag' >&2; return 1 ;;
     esac
+    if [ "$schema" = 3 ]; then
+        # Share the same strict selected-client validator as render.uc.
+        /usr/bin/ucode /usr/share/parallax/selected_print.uc validate || return 1
+    fi
     if [ "$mode" != 'selective' ]; then
         echo 'MVP (a) only accepts mode=selective' >&2
         return 1

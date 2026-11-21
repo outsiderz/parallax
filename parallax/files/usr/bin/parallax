@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: MIT
 # Private config-only CLI for MVP (b); no shell-sourced user inputs.
 
-VERSION='0.3.1'
+VERSION='0.4.0'
 
 usage() {
     cat <<'USAGE'
 Usage: parallax <command>
   version     Print Parallax version
-  check       Validate platform and UCI v2 settings (read-only)
+  check       Validate platform and UCI v2/v3 settings (read-only)
   status      Read the live read-only ubus status
   ping        Ping the ubus daemon
   render      Generate private candidate JSON in /run/parallax (no proxy start)
@@ -18,10 +18,12 @@ Usage: parallax <command>
   history     List bounded revision metadata (no secrets)
   rollback REVISION    Restore validated earlier revision (config-only)
   singbox start|stop|status   Manually control isolated parallax-singbox procd instance
+  schema migrate-v3|rollback-v2   Offline root UCI migration, never network state
+  net preflight   Read-only UCI/binding/firewall/routing audit (MVP-c2a-0)
   purge --confirm-delete-all   Stop services and delete all Parallax user data
   help        Show this help
 
-MVP-c1: render/validate/apply/rollback remain CONFIG ONLY.
+MVP-c2a-0: render/validate/apply/rollback remain CONFIG ONLY.
 The separate singbox command starts an inbound-free process manually.
 It never changes firewall, routing, TProxy, TUN or DNS.
 To enable the status daemon: uci set parallax.main.enabled=1;
@@ -62,14 +64,14 @@ make_candidate() {
 
 case "${1:-help}" in
     version)
-        printf 'Parallax %s (MVP-c1: manual sing-box lifecycle)\n' "$VERSION"
+        printf 'Parallax %s (MVP-c2a-0: read-only preflight, no interception)\n' "$VERSION"
         ;;
     check)
         # shellcheck disable=SC1091
         . /usr/share/parallax/platform.sh
         parallax_check_platform || exit 1
         parallax_check_config || exit 1
-        echo 'OK: platform and MVP-b UCI configuration valid (routing untouched)'
+        echo 'OK: platform and strict UCI v2/v3 configuration valid (routing untouched)'
         ;;
     status)
         if ! ubus call parallax status '{}'; then
@@ -142,6 +144,17 @@ case "${1:-help}" in
             exit 2
         }
         /usr/bin/ucode /usr/share/parallax/transaction.uc rollback "$2"
+        ;;
+    schema)
+        [ "$#" = 2 ] || { echo 'Usage: parallax schema migrate-v3|rollback-v2' >&2; exit 2; }
+        exec /usr/share/parallax/schema_migrate.sh "$2"
+        ;;
+    net)
+        [ "$#" = 2 ] && [ "$2" = preflight ] || {
+            echo 'MVP-c2a-0: ONLY parallax net preflight exists; net enable is forbidden' >&2
+            exit 2
+        }
+        exec /usr/share/parallax/net_preflight.sh
         ;;
     singbox)
         [ "$#" = 2 ] || {

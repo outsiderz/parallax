@@ -7,7 +7,7 @@ import * as ubus from 'ubus';
 import { cursor } from 'uci';
 import { glob, readfile } from 'fs';
 
-const VERSION = '0.3.1';
+const VERSION = '0.4.0';
 
 // Read-only process discovery; never change native sing-box or kernel state.
 function isolatedSingbox() {
@@ -41,7 +41,13 @@ function status() {
     return {
         name: 'parallax',
         version: VERSION,
-        phase: 'mvp-c1',
+        phase: 'mvp-c2a-0',
+        // Isolated sing-box process state is NOT traffic-interception readiness.
+        interception_supported: false,
+        interception_ready: false,
+        interception_active: false,
+        net_enable_available: false,
+        network_preflight_only: true,
         daemon_running: true,
         routing_active: false,
         proxy_running: isolatedSingbox().running,
@@ -72,7 +78,7 @@ const published = connection.publish('parallax', {
         // The native ucode ubus method validator rejects undeclared arguments.
         // Declare this transport-only string; handlers remain read-only.
         args: { ubus_rpc_session: '' },
-        call: (req, msg) => req.reply({ ok: true, name: 'parallax', phase: 'mvp-c1' })
+        call: (req, msg) => req.reply({ ok: true, name: 'parallax', phase: 'mvp-c2a-0' })
     }
 });
 if (!published)
@@ -82,7 +88,7 @@ const heartbeat = uloop.interval(10000, () => heartbeat_seq++);
 if (!heartbeat)
     die('Parallax: cannot initialize heartbeat\n');
 
-printf('Parallax %s (MVP-c1) started: routing disabled\n', VERSION);
+printf('Parallax %s (MVP-c2a-0) started: interception unavailable, routing disabled\n', VERSION);
 const result = uloop.run();
 connection.disconnect();
 if (result == null)

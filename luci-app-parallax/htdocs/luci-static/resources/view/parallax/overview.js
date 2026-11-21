@@ -20,8 +20,9 @@ function renderStatus(node, state) {
         _('Version: ') + (state.version || '?'),
         _('Phase: ') + (state.phase || '?'),
         _('Heartbeat: ') + (state.heartbeat_seq != null ? state.heartbeat_seq : 0),
-        _('Routing: disabled in MVP-b'),
-        _('Proxy: not started in MVP-b')
+        _('Routing: disabled — preflight only'),
+        _('Traffic interception: unavailable (no net enable / TProxy)'),
+        _('Isolated sing-box process: ') + (state.singbox && state.singbox.running ? _('running (not interception)') : _('stopped'))
     ].join('\n');
 }
 
@@ -41,7 +42,7 @@ return view.extend({
         return E('div', {}, [
             E('h2', {}, _('Parallax')),
             E('div', { 'class': 'alert-message warning' },
-                _('MVP-b is a read-only scaffold. No routing, DNS or firewall changes are made.')),
+                _('MVP-c2a-0 supports read-only preflight only. Traffic interception is unavailable; no routing, DNS or firewall changes are made.')),
             E('p', {}, _('Enable the status service from SSH after validating the platform and configuration.')),
             status
         ]);

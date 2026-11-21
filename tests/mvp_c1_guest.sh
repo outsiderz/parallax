@@ -209,11 +209,11 @@ ubus call service list '{"name":"parallax-singbox","verbose":true}' |
   grep -Fq '"parallax-singbox"'
 echo 'PASS: positive control without running native sing-box: Parallax starts successfully'
 status_json="$(ubus call parallax status '{}')"
-printf '%s\n' "$status_json" | jsonfilter -e '@.phase' | grep -qx 'mvp-c1' || { echo 'FAIL: status phase'; exit 1; }
+printf '%s\n' "$status_json" | jsonfilter -e '@.phase' | grep -qx 'mvp-c2a-0' || { echo 'FAIL: status phase'; exit 1; }
 printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.running' | grep -qx 'true' || { echo 'FAIL: status running flag'; exit 1; }
 printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.user' | grep -qx 'parallax-sb' || { echo 'FAIL: status user'; exit 1; }
 printf '%s\n' "$status_json" | jsonfilter -e '@.singbox.pid' | grep -qx "$pid" || { echo 'FAIL: status PID'; exit 1; }
-echo 'PASS: read-only status phase=mvp-c1 singbox running/pid/user'
+echo 'PASS: read-only status phase=mvp-c2a-0 singbox running/pid/user'
 echo 'PASS: manual procd instance running as parallax-sb; private config root:group 0640'
 
 kill -9 "$pid"

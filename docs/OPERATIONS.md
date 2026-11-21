@@ -110,6 +110,58 @@ parallax singbox status
 
 After exhaustion, the read-only `parallax status` reports `phase: mvp-c1` and `singbox: { running: false, pid: null, user: "parallax-sb" }`. It shows that **the isolated process is stopped**; these fields do not independently prove why it stopped, so consult `logread` and the procd service state before manually starting it again. An administrator must diagnose the crash before issuing `parallax singbox start`; this is not an automatic recovery promise. Neither status, respawn nor startup is allowed to change routing, nftables, DNS or the stock sing-box service.
 
-## MVP-c1: release 0.3.1 version matrix
+## MVP-c2a-0: release 0.4.0 version matrix
 
-All three packages must share the exact release `0.3.1-r1`: `parallax`, `luci-app-parallax`, and the generated `luci-i18n-parallax-ru` package (built by `luci.mk` from the LuCI translation `po/ru/parallax.po`). The QEMU build checks the resulting three APK filenames and emits `package-version-consistency.log`; host tests also compare Makefile versions with the CLI, daemon and installed version file.
+All three packages must share the exact release `0.4.0-r1`: `parallax`, `luci-app-parallax`, and the generated `luci-i18n-parallax-ru` package (built by `luci.mk` from the LuCI translation `po/ru/parallax.po`). The QEMU build checks the resulting three APK filenames and emits `package-version-consistency.log`; host tests also compare Makefile versions with the CLI, daemon and installed version file.
+
+
+## MVP-c2a-0 — strictly offline schema migration and diagnostic preflight
+
+MVP-c2a-0 does **not** provide net enable, TProxy, nftables, ip rule, routes,
+conntrack manipulation, DHCP writes or DNS changes. Its read-only preflight
+cannot make a selected client use the proxy, even if all diagnostics pass.
+
+Only root may perform the **separate offline UCI migration** after explicitly
+disabling the config daemon and stopping the isolated Parallax sing-box.
+The original version-2 config is protected under
+/etc/parallax/generated/schema-v2.backup with 0600 permissions until rollback.
+On a failure, the original file is restored. This is the only persistent write
+operation in this stage, and it changes UCI **not kernel networking state**.
+
+~~~sh
+uci set parallax.main.enabled=0
+uci commit parallax
+parallax singbox stop
+parallax schema migrate-v3
+# Root manually adds selected_client sections through uci and commits.
+parallax check
+parallax net preflight
+# If returning to schema v2 is required:
+parallax schema rollback-v2
+~~~
+
+The future v3 selected_client section has exact enabled, mac, ipv4, interface
+and binding_proof options. Proof local_lease needs authoritative local DHCP
+plus a live REACHABLE neighbour. Proof admin_static is a root declaration of
+static reservation at an external DHCP server, **plus** a live REACHABLE
+neighbour on the intended ingress interface. Stale, conflicting or missing
+evidence refuses preflight. No probes that mutate neighbour cache are issued.
+The preflight also rejects management SSH peers, unknown fw4/flowtable or mark
+ownership, routing-table conflicts and a running native sing-box. It never
+stops the native service. Lua/LuCI/rpcd do not get migration or preflight
+write privileges.
+
+QEMU compares kernel nft/rules/routes, resolver files and all UCI conffiles
+before and after test, requiring empty diffs. Binding corner cases use
+**synthetic in-memory fixture observations** for the pure parser and are
+explicitly not counted as real L2 neighbour discovery. A live preflight must
+reject unverified neighbours. Passing MVP-c2a-0 does not authorize net enable.
+
+
+### (в2a-0) QEMU: live neighbour proof (netns)
+
+The disposable OpenWrt QEMU guest installs `ip-full` and `kmod-veth` for a **test-only** veth pair. A selected client is placed in an isolated Linux network namespace with an explicit unicast MAC and IPv4. A real ICMP exchange creates a kernel REACHABLE neighbour on the exact ingress interface; the unmodified production `parallax net preflight` must accept this evidence. A subsequent explicit QEMU-only `ip neigh replace ... nud stale` transitions that real kernel neighbour to STALE; the very same preflight must reject it. This is not a text-mocked parser test. Afterward, veth and netns are deleted, and the QEMU gate compares raw/normalized network snapshots and UCI with the pre-test baseline, requiring empty diffs. The test topology necessarily changes kernel state **temporarily inside disposable QEMU**; the production preflight never performs those writes.
+
+### Состояние статуса MVP-c2a-0 (релиз 0.4.0)
+
+Фаза `mvp-c2a-0` означает **только чтение**: `parallax net preflight` проверяет конфигурацию и реальных соседей, но не запускает TProxy или изменение policy routing. `status` возвращает `interception_supported=false`, `interception_ready=false`, `interception_active=false`, `net_enable_available=false`, `network_preflight_only=true`. `singbox.running` описывает только отдельный процесс без слушателей и не означает готовности перехвата. В тестовом QEMU временные интерфейсы veth/netns удаляются полностью до сетевого сравнения baseline.

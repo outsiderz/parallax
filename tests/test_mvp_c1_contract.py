@@ -42,20 +42,20 @@ class MVPC1Contract(unittest.TestCase):
         make = (ROOT/"parallax/Makefile").read_text()
         self.assertIn("USERID:=parallax-sb:parallax-sb", make)
         self.assertIn("/etc/init.d/parallax-singbox disable", make)
-        self.assertIn("PKG_VERSION:=0.3.1", make)
+        self.assertIn("PKG_VERSION:=0.4.0", make)
         self.assertIn("PKG_RELEASE:=1", make)
 
     def test_mvp_c1_status_and_respawn_gate(self):
         daemon = (ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()
         guest = (ROOT/"tests/mvp_c1_guest.sh").read_text()
-        self.assertIn("phase: 'mvp-c1'", daemon)
+        self.assertIn("phase: 'mvp-c2a-0'", daemon)
         self.assertIn("singbox: isolatedSingbox()", daemon)
         self.assertIn("pid: null", daemon)
         self.assertIn("parallax-sb", daemon)
         self.assertIn("repeated kill -9 exhausted bounded procd respawn", guest)
         self.assertIn("procd kept restarting sing-box across eight crash cycles", guest)
 
-    def test_031_three_package_release_consistency(self):
+    def test_040_three_package_release_consistency(self):
         def var(contents, name):
             found = re.search(r"^" + re.escape(name) + r":=(\S+)$", contents, re.M)
             self.assertIsNotNone(found, name)
@@ -63,7 +63,7 @@ class MVPC1Contract(unittest.TestCase):
 
         core = (ROOT/"parallax/Makefile").read_text()
         luci = (ROOT/"luci-app-parallax/Makefile").read_text()
-        self.assertEqual(var(core, "PKG_VERSION"), "0.3.1")
+        self.assertEqual(var(core, "PKG_VERSION"), "0.4.0")
         self.assertEqual(var(luci, "PKG_VERSION"), var(core, "PKG_VERSION"))
         self.assertEqual(var(core, "PKG_RELEASE"), "1")
         self.assertEqual(var(luci, "PKG_RELEASE"), var(core, "PKG_RELEASE"))
@@ -71,14 +71,14 @@ class MVPC1Contract(unittest.TestCase):
         # luci.mk builds the generated third package; there is no separate Makefile.
         self.assertIn("include $(TOPDIR)/feeds/luci/luci.mk", luci)
         self.assertEqual(var(luci, "PKG_PO_VERSION"), expected)
-        self.assertEqual((ROOT/"parallax/files/usr/share/parallax/version").read_text().strip(), "0.3.1")
+        self.assertEqual((ROOT/"parallax/files/usr/share/parallax/version").read_text().strip(), "0.4.0")
         cli = (ROOT/"parallax/files/usr/bin/parallax").read_text()
-        self.assertIn("VERSION='0.3.1'", cli)
+        self.assertIn("VERSION='0.4.0'", cli)
         daemon = (ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()
-        self.assertIn("const VERSION = '0.3.1';", daemon)
+        self.assertIn("const VERSION = '0.4.0';", daemon)
         smoke = (ROOT/"scripts/ci/qemu-smoke.sh").read_text()
-        self.assertIn('name-0.3.1-r1.apk', smoke)
-        self.assertIn('wrong APK version for $name (expected 0.3.1-r1)', smoke)
+        self.assertIn('name-0.4.0-r1.apk', smoke)
+        self.assertIn('wrong APK version for $name (expected 0.4.0-r1)', smoke)
 
     def test_no_secret_leak_on_native_refusal(self):
         guest = (ROOT/"tests/mvp_c1_guest.sh").read_text()

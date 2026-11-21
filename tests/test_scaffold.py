@@ -23,7 +23,7 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn(".reinstall-stopped", core)
         self.assertIn("PKG_RELEASE:=1", core)
         self.assertIn("PKG_RELEASE:=1", luci)
-        self.assertIn("PKG_PO_VERSION:=0.3.1-r1", luci)
+        self.assertIn("PKG_PO_VERSION:=0.4.0-r1", luci)
         self.assertIn('$${IPKG_INSTROOT}', core)
         self.assertIn('$${PKG_UPGRADE}', core)
         self.assertIn('$$(uci -q get parallax.main.enabled', core)
@@ -31,7 +31,12 @@ class ScaffoldTests(unittest.TestCase):
     def test_shell_syntax(self):
         for file in ["parallax/files/etc/init.d/parallax",
                      "parallax/files/usr/bin/parallax",
-                     "parallax/files/usr/share/parallax/platform.sh"]:
+                     "parallax/files/usr/share/parallax/platform.sh",
+                     "parallax/files/usr/share/parallax/net_preflight.sh",
+                     "parallax/files/usr/share/parallax/schema_migrate.sh",
+                     "parallax/files/usr/share/parallax/binding_evidence.sh",
+                     "tests/mvp_c2a0_guest.sh"]:
+
             p=subprocess.run(["sh","-n",str(ROOT/file)])
             self.assertEqual(p.returncode,0)
 
@@ -64,17 +69,17 @@ class ScaffoldTests(unittest.TestCase):
         path=ROOT/"parallax/files/usr/bin/parallax"
         out=subprocess.run(["sh",str(path),"version"],capture_output=True,text=True)
         self.assertEqual(out.returncode,0)
-        self.assertIn("0.3.1",out.stdout)
+        self.assertIn("0.4.0",out.stdout)
         core=(ROOT/"parallax/Makefile").read_text()
         luci=(ROOT/"luci-app-parallax/Makefile").read_text()
-        self.assertIn("PKG_VERSION:=0.3.1", core)
-        self.assertIn("PKG_VERSION:=0.3.1", luci)
-        self.assertEqual((ROOT/"parallax/files/usr/share/parallax/version").read_text().strip(), "0.3.1")
+        self.assertIn("PKG_VERSION:=0.4.0", core)
+        self.assertIn("PKG_VERSION:=0.4.0", luci)
+        self.assertEqual((ROOT/"parallax/files/usr/share/parallax/version").read_text().strip(), "0.4.0")
         daemon=(ROOT/"parallax/files/usr/share/parallax/daemon.uc").read_text()
-        self.assertIn("const VERSION = '0.3.1';", daemon)
-        self.assertIn("phase: 'mvp-c1'", daemon)
+        self.assertIn("const VERSION = '0.4.0';", daemon)
+        self.assertIn("phase: 'mvp-c2a-0'", daemon)
         qemu = (ROOT/"tests/ucode_runtime.uc").read_text()
-        self.assertIn("s.version != '0.3.1'", qemu)
+        self.assertIn("s.version != '0.4.0'", qemu)
 
 if __name__ == "__main__":
     unittest.main()

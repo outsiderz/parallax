@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: MIT
 include $(TOPDIR)/rules.mk
 
-PKG_VERSION:=0.3.1
+PKG_VERSION:=0.4.0
 PKG_RELEASE:=1
 # luci.mk builds luci-i18n-parallax-ru from po/ and uses this
 # explicit translation version rather than PKG_VERSION/PKG_RELEASE.
-PKG_PO_VERSION:=0.3.1-r1
+PKG_PO_VERSION:=0.4.0-r1
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
 

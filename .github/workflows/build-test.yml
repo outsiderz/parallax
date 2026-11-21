@@ -127,11 +127,11 @@ jobs:
           (cd "$ARTIFACT_DIR" && sha256sum *.apk && ls -lh *.apk) \
             | tee "$REPORT_DIR/produced-apks.txt"
           for pkg in parallax luci-app-parallax luci-i18n-parallax-ru; do
-            test -s "$ARTIFACT_DIR/${pkg}-0.3.1-r1.apk" || {
-              echo "FAIL: missing or empty 0.3.1-r1 package for $pkg"
+            test -s "$ARTIFACT_DIR/${pkg}-0.4.0-r1.apk" || {
+              echo "FAIL: missing or empty 0.4.0-r1 package for $pkg"
               exit 1
             }
-            echo "PASS: matched release 0.3.1-r1 for $pkg"
+            echo "PASS: matched release 0.4.0-r1 for $pkg"
           done | tee "$REPORT_DIR/package-version-consistency.log"
 
       - name: Expand combined-efi image and run real QEMU KVM smoke
@@ -164,11 +164,36 @@ jobs:
           grep -Fq 'PASS: native sing-box still stopped/disabled with original configs after all MVP-c1 subtests' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: kill -9 recovered' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: repeated kill -9 exhausted bounded procd respawn; instance remains stopped' "$REPORT_DIR/qemu/mvp-c1-gate.log"
-          grep -Fq 'PASS: read-only status phase=mvp-c1 singbox running/pid/user' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: read-only status phase=mvp-c2a-0 singbox running/pid/user' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: status reports separate instance stopped after respawn limit' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: invalid active config falls back' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: apk del leaves no parallax-singbox' "$REPORT_DIR/qemu/mvp-c1-remove.log"
           echo 'PASS: independently gated MVP-c1 QEMU evidence and zero network diffs'
+
+      - name: MVP-c2a-0 offline UCI and strictly read-only preflight QEMU gate
+        run: |
+          set -euo pipefail
+          test -s "$REPORT_DIR/qemu/mvp-c2a0-PASS.txt"
+          grep -Fq 'PASS: MVP-c2a-0 offline UCI migration and read-only preflight' "$REPORT_DIR/qemu/mvp-c2a0-PASS.txt"
+          for invariant in nft-static routes-v4 rules-v4 routes-v6 rules-v6 resolv-conf resolv-auto; do
+            test -f "$REPORT_DIR/qemu/mvp-c2a0-$invariant-diff.txt"
+            test ! -s "$REPORT_DIR/qemu/mvp-c2a0-$invariant-diff.txt"
+          done
+          grep -Fq 'PASS: status phase=mvp-c2a-0 and interception_ready=false, preflight-only' "$REPORT_DIR/qemu/mvp-c2a0-gate.log"
+          grep -Fq 'REAL NETNS NEIGHBOUR REACHABLE:' "$REPORT_DIR/qemu/mvp-c2a0-gate.log"
+          grep -Fq 'REAL NETNS NEIGHBOUR STALE:' "$REPORT_DIR/qemu/mvp-c2a0-gate.log"
+          test -s "$REPORT_DIR/qemu/mvp-c2a0-real-reachable.log"
+          test -s "$REPORT_DIR/qemu/mvp-c2a0-real-stale.log"
+          grep -Fq 'PASS: MVP-c2a-0 read-only preflight' "$REPORT_DIR/qemu/mvp-c2a0-real-reachable.log"
+          grep -Fq 'neighbour is stale, conflicting or wrong MAC' "$REPORT_DIR/qemu/mvp-c2a0-real-stale.log"
+                    test -f "$REPORT_DIR/qemu/mvp-c2a0-netns-cleanup.txt"
+          test ! -s "$REPORT_DIR/qemu/mvp-c2a0-netns-cleanup.txt"
+          test -f "$REPORT_DIR/qemu/mvp-c2a0-uci-diff.txt"
+          test ! -s "$REPORT_DIR/qemu/mvp-c2a0-uci-diff.txt"
+          for required in 'offline root UCI v2->v3 migration' 'strict UCI selected-client negative validation' 'fixture rejects binding stale' 'fixture rejects binding rebind' 'fixture rejects binding foreign_mac' 'fixture rejects binding ip_conflict' 'real SSH management peer excluded' 'real QEMU netns REACHABLE neighbour was accepted by read-only preflight' 'real QEMU netns STALE neighbour rejected by read-only preflight' 'QEMU veth/netns topology fully cleaned' 'net enable and TProxy are NOT implemented' 'exact UCI v2 rollback'; do
+            grep -Fq "$required" "$REPORT_DIR/qemu/mvp-c2a0-gate.log"
+          done
+          echo 'PASS: MVP-c2a-0 dedicated QEMU gate: migration, negative binding, management, zero network writes'
 
       - name: Upload built APKs
         if: always()

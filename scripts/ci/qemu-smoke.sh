@@ -97,7 +97,7 @@ for n in $(seq 1 120); do
 done
 test "$READY" = 1
 guest 'cat /etc/openwrt_release; ip -4 route; test "$(uci -q get network.lan.proto)" = dhcp' | tee "$REPORT/network.log"
-guest 'apk update; apk add luci uhttpd-mod-ubus nftables-json curl ca-bundle sing-box; /etc/init.d/rpcd enable; /etc/init.d/rpcd restart; /etc/init.d/uhttpd enable; /etc/init.d/uhttpd restart' | tee "$REPORT/baseline.log"
+guest 'apk update; apk add luci uhttpd-mod-ubus nftables-json curl ca-bundle sing-box ip-full kmod-veth; /etc/init.d/rpcd enable; /etc/init.d/rpcd restart; /etc/init.d/uhttpd enable; /etc/init.d/uhttpd restart' | tee "$REPORT/baseline.log"
 guest 'test -x "$(command -v sing-box)"; sing-box version | head -n 2' | tee "$REPORT/sing-box-version.log"
 # luci-i18n-parallax-ru post-install registers this language in UCI.
 # Establish that stock LuCI setting before the baseline snapshot so a
@@ -141,9 +141,9 @@ for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
 done
 # Validate all three APKs use exactly the same release string.
 for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
-  count="$(find "$PACKAGES" -maxdepth 1 -name "$name-0.3.1-r1.apk" | wc -l)"
-  test "$count" -eq 1 || { echo "FAIL: wrong APK version for $name (expected 0.3.1-r1)"; exit 1; }
-  echo "PASS: package $name version 0.3.1-r1"
+  count="$(find "$PACKAGES" -maxdepth 1 -name "$name-0.4.0-r1.apk" | wc -l)"
+  test "$count" -eq 1 || { echo "FAIL: wrong APK version for $name (expected 0.4.0-r1)"; exit 1; }
+  echo "PASS: package $name version 0.4.0-r1"
 done
 for f in "$PACKAGES"/*.apk; do send "$f" /tmp/; done
 guest 'apk add --allow-untrusted /tmp/parallax-*.apk /tmp/luci-app-parallax-*.apk /tmp/luci-i18n-parallax-ru-*.apk' | tee "$REPORT/install.log"
@@ -389,6 +389,30 @@ done
 diff -ruN "$REPORT/c1-before/config" "$REPORT/c1-after/config" >"$REPORT/mvp-c1-uci-diff.txt"
 echo "PASS: MVP-c1 QEMU, rootless procd, security, respawn, zero nft/routes/ip rule/DNS/fw4 diff" |
   tee "$REPORT/mvp-c1-PASS.txt"
+# MVP-c2a-0 is OFFLINE UCI + READ-ONLY preflight: no writes to kernel.
+# Evidence includes raw before/after snapshots and fail-closed binding fixtures.
+snap c2a0-before
+send "$GITHUB_WORKSPACE/tests/mvp_c2a0_guest.sh" /tmp/parallax-mvp-c2a0-guest.sh
+guest 'sh /tmp/parallax-mvp-c2a0-guest.sh' 2>&1 | tee "$REPORT/mvp-c2a0-gate.log"
+# Export separately the actual production-preflight decisions from the
+# temporary QEMU network namespace (not synthetic neighbour fixtures).
+guest 'cat /tmp/parallax-c2a0/real-reachable.log' > "$REPORT/mvp-c2a0-real-reachable.log"
+guest 'cat /tmp/parallax-c2a0/real-stale.log' > "$REPORT/mvp-c2a0-real-stale.log"
+snap c2a0-after
+guest 'test -z "$(ip netns list)"; ! ip link show dev pxc2a0h >/dev/null 2>&1' |
+  tee "$REPORT/mvp-c2a0-netns-cleanup.txt"
+for invariant in nft-static routes-v4 rules-v4 routes-v6 rules-v6 resolv-conf resolv-auto; do
+  diff -u "$REPORT/c2a0-before/$invariant.txt" "$REPORT/c2a0-after/$invariant.txt" > "$REPORT/mvp-c2a0-$invariant-diff.txt" || {
+    echo "FAIL: MVP-c2a-0 changed $invariant"
+    exit 1
+  }
+done
+diff -ruN "$REPORT/c2a0-before/config" "$REPORT/c2a0-after/config" > "$REPORT/mvp-c2a0-uci-diff.txt" || {
+  echo 'FAIL: MVP-c2a-0 did not restore original committed UCI'
+  exit 1
+}
+echo 'PASS: MVP-c2a-0 offline UCI migration and read-only preflight; zero network and final UCI diff' |
+  tee "$REPORT/mvp-c2a0-PASS.txt"
 snap after-install
 guest 'set -eu
 /etc/init.d/parallax stop
