@@ -26,8 +26,10 @@ IFS="$old_ifs"
     fail 'invalid selected_client fields'
 
 # Do not invent or trust an HTTP-derived management peer.
-mgmt="$(printenv SSH_CONNECTION 2>/dev/null | awk '{print $1}')" || :
-[ -n "$mgmt" ] || fail 'trusted SSH management peer unavailable'
+# Dropbear sets SSH_CONNECTION for an SSH session; BusyBox OpenWrt has no
+# standalone printenv. Refuse when invoked outside an identifiable session.
+[ -n "${SSH_CONNECTION:-}" ] || fail 'trusted SSH management peer unavailable'
+mgmt="${SSH_CONNECTION%% *}"
 case "$mgmt" in *:*) fail 'IPv6 management path unsupported by IPv4-only gate' ;; esac
 [ "$mgmt" != "$ipv4" ] || fail 'management peer cannot be selected'
 ip link show dev "$iface" >/dev/null 2>&1 ||

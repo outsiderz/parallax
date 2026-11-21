@@ -103,8 +103,9 @@ reject_binding expired_lease 02:11:22:33:44:55 198.51.100.55 local_lease "$valid
 echo 'PASS: STALE/rebind/foreign MAC/IP conflict negative fixtures (no kernel writes)'
 
 # Real root SSH management peer must never be selected.
-mgmt="$(printenv SSH_CONNECTION | awk '{print $1}')"
-[ -n "$mgmt" ] || { echo 'FAIL: no real SSH management source'; exit 1; }
+[ -n "${SSH_CONNECTION:-}" ] ||
+    { echo 'FAIL: no real SSH management source'; exit 1; }
+mgmt="${SSH_CONNECTION%% *}"
 uci set "parallax.ci_selected.ipv4=$mgmt"
 uci commit parallax
 if parallax net preflight >"$REPORT/mgmt.log" 2>&1; then

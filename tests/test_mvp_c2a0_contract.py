@@ -27,6 +27,11 @@ class C2A0Contract(unittest.TestCase):
         self.assertNotIn("ping ", preflight)
         self.assertNotIn("ip neigh add", preflight)
         self.assertNotIn("ip neigh replace", preflight)
+        self.assertNotIn("printenv", preflight)
+        guest = (ROOT / "tests/mvp_c2a0_guest.sh").read_text()
+        self.assertNotIn("printenv", guest)
+        self.assertIn('mgmt="${SSH_CONNECTION%% *}"', preflight)
+        self.assertIn('mgmt="${SSH_CONNECTION%% *}"', guest)
 
     def test_schema_migration_is_offline_and_explicit(self):
         cli = (ROOT / "parallax/files/usr/bin/parallax").read_text()
