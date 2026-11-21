@@ -176,9 +176,16 @@ seen=0
 for attempt in 1 2 3 4 5; do
     ping -c 1 -W 1 -I "$HOST_VETH" "$CLIENT_IPV4" >/dev/null 2>&1 || :
     observed="$(ip -4 neigh show to "$CLIENT_IPV4" dev "$HOST_VETH")"
-    case "$observed" in
-        *"lladdr $CLIENT_MAC REACHABLE") seen=1; break ;;
-    esac
+    # iproute2 may append spaces after the NUD state. Compare exact
+    # whitespace-separated fields, not the raw string suffix.
+    if printf '%s\n' "$observed" | awk -v ip="$CLIENT_IPV4" -v mac="$CLIENT_MAC" '
+        $1 == ip {
+            for (i=2; i<NF; i++)
+                if ($i == "lladdr" && tolower($(i+1)) == mac && $NF == "REACHABLE")
+                    valid++
+        }
+        END { exit !(valid == 1) }
+    '; then seen=1; break; fi
     sleep 1
 done
 [ "$seen" = 1 ] || {
@@ -199,10 +206,18 @@ echo 'PASS: real QEMU netns REACHABLE neighbour was accepted by read-only prefli
 # Controlled state change in QEMU kernel; no synthetic parsed strings here.
 ip -4 neigh replace "$CLIENT_IPV4" lladdr "$CLIENT_MAC" dev "$HOST_VETH" nud stale
 stale="$(ip -4 neigh show to "$CLIENT_IPV4" dev "$HOST_VETH")"
-case "$stale" in
-    *"lladdr $CLIENT_MAC STALE") ;;
-    *) echo 'FAIL: real kernel neighbour did not enter STALE'; echo "$stale"; exit 1 ;;
-esac
+if ! printf '%s\n' "$stale" | awk -v ip="$CLIENT_IPV4" -v mac="$CLIENT_MAC" '
+    $1 == ip {
+        for (i=2; i<NF; i++)
+            if ($i == "lladdr" && tolower($(i+1)) == mac && $NF == "STALE")
+                valid++
+    }
+    END { exit !(valid == 1) }
+'; then
+    echo 'FAIL: real kernel neighbour did not enter STALE'
+    echo "$stale"
+    exit 1
+fi
 echo "REAL NETNS NEIGHBOUR STALE: $stale"
 if parallax net preflight > "$REPORT/real-stale.log" 2>&1; then
     echo 'FAIL: preflight accepted real STALE neighbour'
