@@ -11,6 +11,8 @@ MAC=02:51:2a:01:00:02
 TESTIP=127.0.0.2
 PORT=39091
 mkdir -p "$D"
+# Test-only directory contains no credentials; allow parallax-sb to traverse it.
+chmod 0755 "$D"
 sb_pid=
 dns_pid=
 cleanup() {
