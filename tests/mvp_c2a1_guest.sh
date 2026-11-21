@@ -5,7 +5,6 @@ set -eu
 umask 077
 D=/tmp/parallax-c2a1
 # File capabilities cannot be gained from nosuid tmpfs; use guest overlay.
-BIN=/usr/libexec/parallax-c2a1
 NS=px-c2a1
 HOST=pxc2a1h
 CLIENT=pxc2a1c
@@ -15,8 +14,6 @@ PORT=39091
 mkdir -p "$D"
 # Test-only directory contains no credentials; allow parallax-sb to traverse it.
 chmod 0755 "$D"
-mkdir -p "$BIN"
-chmod 0755 "$BIN"
 echo "CAPABILITY MOUNTS: $(grep -E ' /tmp | /overlay | /usr ' /proc/mounts | cut -c1-200 | tr '\n' ';')"
 sb_pid=
 dns_pid=
@@ -26,41 +23,37 @@ cleanup() {
     [ -z "$dns_pid" ] || { kill "$dns_pid" 2>/dev/null || :; wait "$dns_pid" 2>/dev/null || :; }
     ip link del "$HOST" 2>/dev/null || :
     ip netns del "$NS" 2>/dev/null || :
-    rm -rf "$BIN"
 }
 trap cleanup EXIT HUP INT TERM
 echo "KERNEL: $(uname -srvm)"
 echo "SING-BOX: $(sing-box version | head -n 1)"
 echo "USER: $(id parallax-sb)"
 test "$(id -u parallax-sb)" != 0
-command -v setcap >/dev/null
-command -v getcap >/dev/null
-cp /tmp/parallax-c2a1-socket-probe "$BIN/probe"
-cp /usr/bin/sing-box "$BIN/sb"
-chmod 0755 "$BIN/probe" "$BIN/sb"
-setcap cap_net_raw=ep "$BIN/probe"
-setcap cap_net_raw=ep "$BIN/sb"
-getcap "$BIN/probe" "$BIN/sb"
-getcap "$BIN/probe" | grep -q cap_net_raw
-getcap "$BIN/sb" | grep -q cap_net_raw
-# Only the test executables receive CAP_NET_RAW, never CAP_NET_ADMIN.
-if getcap "$BIN/probe" "$BIN/sb" | grep -E 'cap_net_admin|cap_sys_admin'; then
-    echo 'FAIL: prohibited broad capability'; exit 1
-fi
-# Same socket operation without the file capability must fail for unprivileged UID.
-cp "$BIN/probe" "$BIN/probe-plain"
-chmod 0755 "$BIN/probe-plain"
-if su -s /bin/sh parallax-sb -c "$BIN/probe-plain" > "$D/no-cap.log" 2>&1; then
+command -v capsh >/dev/null || {
+    echo 'FAIL: capsh missing from QEMU guest; cannot demonstrate constrained ambient capabilities'
+    exit 1
+}
+cp /tmp/parallax-c2a1-socket-probe "$D/probe"
+chmod 0755 "$D/probe"
+# capsh sets CAP_NET_RAW in permitted, effective, inheritable and ambient
+# sets before exec as parallax-sb. No copied sing-box binary or file xattrs.
+# This works independently of /tmp nosuid and does not mutate production procd.
+test_cap() {
+    capsh --caps=cap_net_raw+eip --keep=1 --user=parallax-sb \
+        --addamb=cap_net_raw -- -c "exec $1"
+}
+if su -s /bin/sh parallax-sb -c "$D/probe" > "$D/no-cap.log" 2>&1; then
     echo 'FAIL: no-capability negative control unexpectedly succeeded'; exit 1
 fi
 echo 'PASS: unprivileged no-capability transparent socket refused'
-echo "CAPABILITY PRECHECK: file capabilities stored in guest root overlay; /tmp is not used for executables"
-su -s /bin/sh parallax-sb -c "$BIN/probe" > "$D/socket-proof.log" 2>&1 || {
-    cat "$D/socket-proof.log"; exit 1;
+test_cap "$D/probe" > "$D/socket-proof.log" 2>&1 || {
+    cat "$D/socket-proof.log"; exit 1
 }
 cat "$D/socket-proof.log"
 grep -q 'PASS: TCP setsockopt+getsockopt IP_TRANSPARENT=1' "$D/socket-proof.log"
 grep -q 'PASS: UDP setsockopt+getsockopt IP_TRANSPARENT=1' "$D/socket-proof.log"
+echo 'PASS: CAP_NET_RAW-only ambient capability proof without copying sing-box'
+
 cat > "$D/config.json" <<'JSON'
 {
   "log": {"level": "warn"},
@@ -70,13 +63,15 @@ cat > "$D/config.json" <<'JSON'
 }
 JSON
 chmod 0644 "$D/config.json"
-"$BIN/sb" check -c "$D/config.json"
+sing-box check -c "$D/config.json"
 # Unlike production, this isolated test runs an explicit test configuration.
-su -s /bin/sh parallax-sb -c "exec $BIN/sb run -c $D/config.json" >"$D/singbox.log" 2>&1 &
+capsh --caps=cap_net_raw+eip --keep=1 --user=parallax-sb \
+    --addamb=cap_net_raw -- -c "exec /usr/bin/sing-box run -c $D/config.json" \
+    >"$D/singbox.log" 2>&1 &
 launcher=$!
 ready=0
 for n in 1 2 3 4 5 6 7 8 9 10; do
-    sb_pid="$(pidof sb 2>/dev/null | awk '{print $1}')" || :
+    sb_pid="$(pidof sing-box 2>/dev/null | awk '{print $1}')" || :
     if [ -n "$sb_pid" ] &&
        awk '$2 == "0200007F:98B3" && $4 == "0A" {found=1} END {exit !found}' /proc/net/tcp &&
        awk '$2 == "0200007F:98B3" {found=1} END {exit !found}' /proc/net/udp; then
