@@ -65,8 +65,9 @@ else
     uci -q revert parallax || :
     [ "$(uci -q get parallax.main.schema_version)" = 2 ] ||
         fail 'rollback did not restore v2'
-    [ "$(sha256sum "$CONFIG" | awk '{print $1}')" =
-      "$(sha256sum "$BACKUP" | awk '{print $1}')" ] ||
+    restored_sum="$(sha256sum "$CONFIG" | awk '{print $1}')"
+    original_sum="$(sha256sum "$BACKUP" | awk '{print $1}')"
+    [ "$restored_sum" = "$original_sum" ] ||
         fail 'v2 file does not match original checksum'
     rm -f "$HASH" "$BACKUP"
     echo 'PASS: exact original UCI v2 restored; migration backup retired'
