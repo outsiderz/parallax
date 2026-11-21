@@ -67,9 +67,15 @@ for family in -4 -6; do
     if printf '%s\n' "$rules" | grep -Eq '(fwmark|lookup 20263|^11000:)'; then
         fail 'fwmark, priority or routing table collision'
     fi
-    existing="$(ip "$family" route show table 20263 2>/dev/null)" ||
-        fail 'cannot inspect reserved routing table'
-    [ -z "$existing" ] || fail 'routing table 20263 occupied'
+    # iproute2 can return nonzero when a queried non-existent table is
+    # perfectly free. Enumerate ALL tables (which must succeed), then match
+    # only the explicit table ID in that successful output.
+    all_routes="$(ip "$family" route show table all)" ||
+        fail 'cannot inspect routing tables'
+    if printf '%s\n' "$all_routes" |
+       grep -Eq '(^|[[:space:]])table[[:space:]]+20263([[:space:]]|$)'; then
+        fail 'routing table 20263 occupied'
+    fi
 done
 echo 'PASS: read-only fw4/flowtable/marks/ip-rule/table/native-sing-box audit'
 
