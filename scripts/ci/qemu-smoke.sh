@@ -394,6 +394,10 @@ echo "PASS: MVP-c1 QEMU, rootless procd, security, respawn, zero nft/routes/ip r
 snap c2a0-before
 send "$GITHUB_WORKSPACE/tests/mvp_c2a0_guest.sh" /tmp/parallax-mvp-c2a0-guest.sh
 guest 'sh /tmp/parallax-mvp-c2a0-guest.sh' 2>&1 | tee "$REPORT/mvp-c2a0-gate.log"
+# Export separately the actual production-preflight decisions from the
+# temporary QEMU network namespace (not synthetic neighbour fixtures).
+guest 'cat /tmp/parallax-c2a0/real-reachable.log' > "$REPORT/mvp-c2a0-real-reachable.log"
+guest 'cat /tmp/parallax-c2a0/real-stale.log' > "$REPORT/mvp-c2a0-real-stale.log"
 snap c2a0-after
 guest 'test -z "$(ip netns list)"; ! ip link show dev pxc2a0h >/dev/null 2>&1' |
   tee "$REPORT/mvp-c2a0-netns-cleanup.txt"
