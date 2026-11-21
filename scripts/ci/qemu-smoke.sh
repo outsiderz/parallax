@@ -97,7 +97,7 @@ for n in $(seq 1 120); do
 done
 test "$READY" = 1
 guest 'cat /etc/openwrt_release; ip -4 route; test "$(uci -q get network.lan.proto)" = dhcp' | tee "$REPORT/network.log"
-guest 'apk update; apk add luci uhttpd-mod-ubus nftables-json curl ca-bundle sing-box; /etc/init.d/rpcd enable; /etc/init.d/rpcd restart; /etc/init.d/uhttpd enable; /etc/init.d/uhttpd restart' | tee "$REPORT/baseline.log"
+guest 'apk update; apk add luci uhttpd-mod-ubus nftables-json curl ca-bundle sing-box ip-full kmod-veth; /etc/init.d/rpcd enable; /etc/init.d/rpcd restart; /etc/init.d/uhttpd enable; /etc/init.d/uhttpd restart' | tee "$REPORT/baseline.log"
 guest 'test -x "$(command -v sing-box)"; sing-box version | head -n 2' | tee "$REPORT/sing-box-version.log"
 # luci-i18n-parallax-ru post-install registers this language in UCI.
 # Establish that stock LuCI setting before the baseline snapshot so a
@@ -395,6 +395,8 @@ snap c2a0-before
 send "$GITHUB_WORKSPACE/tests/mvp_c2a0_guest.sh" /tmp/parallax-mvp-c2a0-guest.sh
 guest 'sh /tmp/parallax-mvp-c2a0-guest.sh' 2>&1 | tee "$REPORT/mvp-c2a0-gate.log"
 snap c2a0-after
+guest 'test -z "$(ip netns list)"; ! ip link show dev pxc2a0h >/dev/null 2>&1' |
+  tee "$REPORT/mvp-c2a0-netns-cleanup.txt"
 for invariant in nft-static routes-v4 rules-v4 routes-v6 rules-v6 resolv-conf resolv-auto; do
   diff -u "$REPORT/c2a0-before/$invariant.txt" "$REPORT/c2a0-after/$invariant.txt" > "$REPORT/mvp-c2a0-$invariant-diff.txt" || {
     echo "FAIL: MVP-c2a-0 changed $invariant"

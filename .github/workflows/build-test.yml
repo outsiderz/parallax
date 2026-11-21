@@ -179,9 +179,11 @@ jobs:
             test -f "$REPORT_DIR/qemu/mvp-c2a0-$invariant-diff.txt"
             test ! -s "$REPORT_DIR/qemu/mvp-c2a0-$invariant-diff.txt"
           done
+          test -f "$REPORT_DIR/qemu/mvp-c2a0-netns-cleanup.txt"
+          test ! -s "$REPORT_DIR/qemu/mvp-c2a0-netns-cleanup.txt"
           test -f "$REPORT_DIR/qemu/mvp-c2a0-uci-diff.txt"
           test ! -s "$REPORT_DIR/qemu/mvp-c2a0-uci-diff.txt"
-          for required in 'offline root UCI v2->v3 migration' 'strict UCI selected-client negative validation' 'fixture rejects binding stale' 'fixture rejects binding rebind' 'fixture rejects binding foreign_mac' 'fixture rejects binding ip_conflict' 'real SSH management peer excluded' 'net enable and TProxy are NOT implemented' 'exact UCI v2 rollback'; do
+          for required in 'offline root UCI v2->v3 migration' 'strict UCI selected-client negative validation' 'fixture rejects binding stale' 'fixture rejects binding rebind' 'fixture rejects binding foreign_mac' 'fixture rejects binding ip_conflict' 'real SSH management peer excluded' 'real QEMU netns REACHABLE neighbour was accepted by read-only preflight' 'real QEMU netns STALE neighbour rejected by read-only preflight' 'QEMU veth/netns topology fully cleaned' 'net enable and TProxy are NOT implemented' 'exact UCI v2 rollback'; do
             grep -Fq "$required" "$REPORT_DIR/qemu/mvp-c2a0-gate.log"
           done
           echo 'PASS: MVP-c2a-0 dedicated QEMU gate: migration, negative binding, management, zero network writes'

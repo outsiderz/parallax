@@ -156,3 +156,8 @@ before and after test, requiring empty diffs. Binding corner cases use
 **synthetic in-memory fixture observations** for the pure parser and are
 explicitly not counted as real L2 neighbour discovery. A live preflight must
 reject unverified neighbours. Passing MVP-c2a-0 does not authorize net enable.
+
+
+### (в2a-0) QEMU: live neighbour proof (netns)
+
+The disposable OpenWrt QEMU guest installs `ip-full` and `kmod-veth` for a **test-only** veth pair. A selected client is placed in an isolated Linux network namespace with an explicit unicast MAC and IPv4. A real ICMP exchange creates a kernel REACHABLE neighbour on the exact ingress interface; the unmodified production `parallax net preflight` must accept this evidence. A subsequent explicit QEMU-only `ip neigh replace ... nud stale` transitions that real kernel neighbour to STALE; the very same preflight must reject it. This is not a text-mocked parser test. Afterward, veth and netns are deleted, and the QEMU gate compares raw/normalized network snapshots and UCI with the pre-test baseline, requiring empty diffs. The test topology necessarily changes kernel state **temporarily inside disposable QEMU**; the production preflight never performs those writes.

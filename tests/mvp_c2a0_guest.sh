@@ -7,9 +7,21 @@ umask 077
 CFG=/etc/config/parallax
 ORIG=/tmp/parallax-c2a0-v2-original
 REPORT=/tmp/parallax-c2a0
+# This namespace exists ONLY in disposable QEMU. Production net preflight
+# remains strictly read-only and never runs these commands.
+NS=px-c2a0-ci
+HOST_VETH=pxc2a0h
+PEER_VETH=pxc2a0n
+CLIENT_MAC=02:11:22:33:44:55
+CLIENT_IPV4=198.19.88.2
 mkdir -p "$REPORT"
 cp "$CFG" "$ORIG"
+cleanup_netns() {
+    ip link del "$HOST_VETH" >/dev/null 2>&1 || :
+    ip netns del "$NS" >/dev/null 2>&1 || :
+}
 cleanup() {
+    cleanup_netns
     cp "$ORIG" "$CFG" || :
     uci -q revert parallax || :
     rm -f /etc/parallax/generated/schema-v2.backup /etc/parallax/generated/schema-v2.backup.sha256
@@ -127,6 +139,75 @@ fi
 grep -Fq 'net enable is forbidden' "$REPORT/forbidden.log" ||
     { echo 'FAIL: net enable refusal missing'; exit 1; }
 echo 'PASS: net enable and TProxy are NOT implemented'
+
+# Actual kernel neighbour test. Topology is temporary; the process runs
+# inside QEMU and the production preflight only issues read-only probes.
+echo 'REAL QEMU NETNS: creating isolated veth client'
+command -v ip >/dev/null 2>&1 || { echo 'FAIL: iproute2 missing'; exit 1; }
+ip netns add "$NS"
+ip link add "$HOST_VETH" type veth peer name "$PEER_VETH"
+ip link set "$PEER_VETH" netns "$NS"
+ip link set "$HOST_VETH" up
+ip addr add 198.19.88.1/30 dev "$HOST_VETH"
+ip netns exec "$NS" ip link set lo up
+ip netns exec "$NS" ip link set "$PEER_VETH" address "$CLIENT_MAC"
+ip netns exec "$NS" ip addr add "$CLIENT_IPV4/30" dev "$PEER_VETH"
+ip netns exec "$NS" ip link set "$PEER_VETH" up
+uci set "parallax.ci_selected.mac=$CLIENT_MAC"
+uci set "parallax.ci_selected.ipv4=$CLIENT_IPV4"
+uci set "parallax.ci_selected.interface=$HOST_VETH"
+uci set parallax.ci_selected.binding_proof=admin_static
+uci commit parallax
+# Real ICMP exchange populates an authentic REACHABLE kernel neighbour, no
+# mocked 'ip neigh' output. Retry to accommodate ARP and driver scheduling.
+seen=0
+for attempt in 1 2 3 4 5; do
+    ping -c 1 -W 1 -I "$HOST_VETH" "$CLIENT_IPV4" >/dev/null 2>&1 || :
+    observed="$(ip -4 neigh show to "$CLIENT_IPV4" dev "$HOST_VETH")"
+    case "$observed" in
+        *"lladdr $CLIENT_MAC REACHABLE") seen=1; break ;;
+    esac
+    sleep 1
+done
+[ "$seen" = 1 ] || {
+    echo 'FAIL: real QEMU namespace never produced matching REACHABLE neighbour'
+    echo "$observed"
+    exit 1
+}
+echo "REAL NETNS NEIGHBOUR REACHABLE: $observed"
+if ! parallax net preflight > "$REPORT/real-reachable.log" 2>&1; then
+    echo 'FAIL: preflight rejected authentic REACHABLE MAC/IP/interface evidence'
+    cat "$REPORT/real-reachable.log"
+    exit 1
+fi
+grep -Fq 'PASS: MVP-c2a-0 read-only preflight' "$REPORT/real-reachable.log" ||
+    { echo 'FAIL: no positive preflight evidence'; exit 1; }
+cat "$REPORT/real-reachable.log"
+echo 'PASS: real QEMU netns REACHABLE neighbour was accepted by read-only preflight'
+# Controlled state change in QEMU kernel; no synthetic parsed strings here.
+ip -4 neigh replace "$CLIENT_IPV4" lladdr "$CLIENT_MAC" dev "$HOST_VETH" nud stale
+stale="$(ip -4 neigh show to "$CLIENT_IPV4" dev "$HOST_VETH")"
+case "$stale" in
+    *"lladdr $CLIENT_MAC STALE") ;;
+    *) echo 'FAIL: real kernel neighbour did not enter STALE'; echo "$stale"; exit 1 ;;
+esac
+echo "REAL NETNS NEIGHBOUR STALE: $stale"
+if parallax net preflight > "$REPORT/real-stale.log" 2>&1; then
+    echo 'FAIL: preflight accepted real STALE neighbour'
+    exit 1
+fi
+grep -Fq 'neighbour is stale, conflicting or wrong MAC' "$REPORT/real-stale.log" ||
+    { echo 'FAIL: refusal not caused by STALE evidence'; cat "$REPORT/real-stale.log"; exit 1; }
+cat "$REPORT/real-stale.log"
+echo 'PASS: real QEMU netns STALE neighbour rejected by read-only preflight'
+cleanup_netns
+if ip netns list | grep -Fq "$NS"; then
+    echo 'FAIL: test network namespace remains'; exit 1
+fi
+if ip link show dev "$HOST_VETH" >/dev/null 2>&1; then
+    echo 'FAIL: test veth remains'; exit 1
+fi
+echo 'PASS: QEMU veth/netns topology fully cleaned before zero-diff snapshots'
 
 # Rollback restores the exact v2 snapshot taken immediately before migration,
 # with profiles/rules intact; no stale rollback backup is left behind.

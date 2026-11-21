@@ -76,6 +76,8 @@ class C2A0Contract(unittest.TestCase):
                       "mvp-c2a0-PASS.txt", "mvp-c2a0-$invariant-diff.txt"):
             self.assertIn(token, smoke + workflow)
         for scenario in ("stale", "foreign_mac", "ip_conflict", "rebind",
+                         "ip netns add", "ip link add", "REAL NETNS NEIGHBOUR REACHABLE",
+                         "REAL NETNS NEIGHBOUR STALE", "parallax net preflight",
                          "exact UCI v2 rollback", "real SSH management peer excluded",
                          "net enable and TProxy are NOT implemented"):
             self.assertIn(scenario, guest)
