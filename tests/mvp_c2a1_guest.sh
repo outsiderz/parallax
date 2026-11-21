@@ -39,7 +39,7 @@ chmod 0755 "$D/probe"
 # sets before exec as parallax-sb. No copied sing-box binary or file xattrs.
 # This works independently of /tmp nosuid and does not mutate production procd.
 test_cap() {
-    capsh --caps=cap_net_raw+eip --keep=1 --user=parallax-sb \
+    capsh --keep=1 --user=parallax-sb --caps=cap_net_raw+eip \
         --addamb=cap_net_raw -- -c "exec $1"
 }
 if su -s /bin/sh parallax-sb -c "$D/probe" > "$D/no-cap.log" 2>&1; then
@@ -65,7 +65,7 @@ JSON
 chmod 0644 "$D/config.json"
 sing-box check -c "$D/config.json"
 # Unlike production, this isolated test runs an explicit test configuration.
-capsh --caps=cap_net_raw+eip --keep=1 --user=parallax-sb \
+capsh --keep=1 --user=parallax-sb --caps=cap_net_raw+eip \
     --addamb=cap_net_raw -- -c "exec /usr/bin/sing-box run -c $D/config.json" \
     >"$D/singbox.log" 2>&1 &
 launcher=$!
