@@ -4,6 +4,8 @@
 set -eu
 umask 077
 D=/tmp/parallax-c2a1
+# File capabilities cannot be gained from nosuid tmpfs; use guest overlay.
+BIN=/usr/libexec/parallax-c2a1
 NS=px-c2a1
 HOST=pxc2a1h
 CLIENT=pxc2a1c
@@ -13,6 +15,9 @@ PORT=39091
 mkdir -p "$D"
 # Test-only directory contains no credentials; allow parallax-sb to traverse it.
 chmod 0755 "$D"
+mkdir -p "$BIN"
+chmod 0755 "$BIN"
+echo "CAPABILITY MOUNTS: $(grep -E ' /tmp | /overlay | /usr ' /proc/mounts | cut -c1-200 | tr '\n' ';')"
 sb_pid=
 dns_pid=
 cleanup() {
@@ -21,7 +26,7 @@ cleanup() {
     [ -z "$dns_pid" ] || { kill "$dns_pid" 2>/dev/null || :; wait "$dns_pid" 2>/dev/null || :; }
     ip link del "$HOST" 2>/dev/null || :
     ip netns del "$NS" 2>/dev/null || :
-    rm -f "$D/sb" "$D/probe"
+    rm -rf "$BIN"
 }
 trap cleanup EXIT HUP INT TERM
 echo "KERNEL: $(uname -srvm)"
@@ -30,26 +35,27 @@ echo "USER: $(id parallax-sb)"
 test "$(id -u parallax-sb)" != 0
 command -v setcap >/dev/null
 command -v getcap >/dev/null
-cp /tmp/parallax-c2a1-socket-probe "$D/probe"
-cp /usr/bin/sing-box "$D/sb"
-chmod 0755 "$D/probe" "$D/sb"
-setcap cap_net_raw=ep "$D/probe"
-setcap cap_net_raw=ep "$D/sb"
-getcap "$D/probe" "$D/sb"
-getcap "$D/probe" | grep -q cap_net_raw
-getcap "$D/sb" | grep -q cap_net_raw
+cp /tmp/parallax-c2a1-socket-probe "$BIN/probe"
+cp /usr/bin/sing-box "$BIN/sb"
+chmod 0755 "$BIN/probe" "$BIN/sb"
+setcap cap_net_raw=ep "$BIN/probe"
+setcap cap_net_raw=ep "$BIN/sb"
+getcap "$BIN/probe" "$BIN/sb"
+getcap "$BIN/probe" | grep -q cap_net_raw
+getcap "$BIN/sb" | grep -q cap_net_raw
 # Only the test executables receive CAP_NET_RAW, never CAP_NET_ADMIN.
-if getcap "$D/probe" "$D/sb" | grep -E 'cap_net_admin|cap_sys_admin'; then
+if getcap "$BIN/probe" "$BIN/sb" | grep -E 'cap_net_admin|cap_sys_admin'; then
     echo 'FAIL: prohibited broad capability'; exit 1
 fi
 # Same socket operation without the file capability must fail for unprivileged UID.
-cp "$D/probe" "$D/probe-plain"
-chmod 0755 "$D/probe-plain"
-if su -s /bin/sh parallax-sb -c "$D/probe-plain" > "$D/no-cap.log" 2>&1; then
+cp "$BIN/probe" "$BIN/probe-plain"
+chmod 0755 "$BIN/probe-plain"
+if su -s /bin/sh parallax-sb -c "$BIN/probe-plain" > "$D/no-cap.log" 2>&1; then
     echo 'FAIL: no-capability negative control unexpectedly succeeded'; exit 1
 fi
 echo 'PASS: unprivileged no-capability transparent socket refused'
-su -s /bin/sh parallax-sb -c "$D/probe" > "$D/socket-proof.log" 2>&1 || {
+echo "CAPABILITY PRECHECK: file capabilities stored in guest root overlay; /tmp is not used for executables"
+su -s /bin/sh parallax-sb -c "$BIN/probe" > "$D/socket-proof.log" 2>&1 || {
     cat "$D/socket-proof.log"; exit 1;
 }
 cat "$D/socket-proof.log"
@@ -64,9 +70,9 @@ cat > "$D/config.json" <<'JSON'
 }
 JSON
 chmod 0644 "$D/config.json"
-"$D/sb" check -c "$D/config.json"
+"$BIN/sb" check -c "$D/config.json"
 # Unlike production, this isolated test runs an explicit test configuration.
-su -s /bin/sh parallax-sb -c "exec $D/sb run -c $D/config.json" >"$D/singbox.log" 2>&1 &
+su -s /bin/sh parallax-sb -c "exec $BIN/sb run -c $D/config.json" >"$D/singbox.log" 2>&1 &
 launcher=$!
 ready=0
 for n in 1 2 3 4 5 6 7 8 9 10; do
