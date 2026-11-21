@@ -39,6 +39,18 @@ test -f /etc/parallax/generated/schema-v2.backup
 /usr/bin/ucode /usr/share/parallax/fs_guard.uc backup /etc/parallax/generated/schema-v2.backup
 parallax check
 echo 'PASS: offline root UCI v2->v3 migration and strict validation'
+status="$(ubus call parallax status '{}')"
+printf '%s\n' "$status" | jsonfilter -e '@.phase' | grep -qx 'mvp-c2a-0' ||
+    { echo 'FAIL: read-only status phase is not mvp-c2a-0'; exit 1; }
+for field in interception_ready interception_supported interception_active net_enable_available; do
+    printf '%s\n' "$status" | jsonfilter -e "@.$field" | grep -qx false ||
+        { echo "FAIL: status must report $field=false"; exit 1; }
+done
+printf '%s\n' "$status" | jsonfilter -e '@.network_preflight_only' | grep -qx true ||
+    { echo 'FAIL: status must explicitly declare preflight-only'; exit 1; }
+printf '%s\n' "$status" | jsonfilter -e '@.version' | grep -qx '0.4.0' ||
+    { echo 'FAIL: status version mismatch'; exit 1; }
+echo 'PASS: status phase=mvp-c2a-0 and interception_ready=false, preflight-only'
 
 uci set parallax.ci_selected=selected_client
 uci set parallax.ci_selected.enabled=1

@@ -141,9 +141,9 @@ for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
 done
 # Validate all three APKs use exactly the same release string.
 for name in parallax luci-app-parallax luci-i18n-parallax-ru; do
-  count="$(find "$PACKAGES" -maxdepth 1 -name "$name-0.3.1-r1.apk" | wc -l)"
-  test "$count" -eq 1 || { echo "FAIL: wrong APK version for $name (expected 0.3.1-r1)"; exit 1; }
-  echo "PASS: package $name version 0.3.1-r1"
+  count="$(find "$PACKAGES" -maxdepth 1 -name "$name-0.4.0-r1.apk" | wc -l)"
+  test "$count" -eq 1 || { echo "FAIL: wrong APK version for $name (expected 0.4.0-r1)"; exit 1; }
+  echo "PASS: package $name version 0.4.0-r1"
 done
 for f in "$PACKAGES"/*.apk; do send "$f" /tmp/; done
 guest 'apk add --allow-untrusted /tmp/parallax-*.apk /tmp/luci-app-parallax-*.apk /tmp/luci-i18n-parallax-ru-*.apk' | tee "$REPORT/install.log"

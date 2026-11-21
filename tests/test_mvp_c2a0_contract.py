@@ -68,6 +68,32 @@ class C2A0Contract(unittest.TestCase):
         self.assertIn("REACHABLE", binding)
         self.assertIn("local DHCP lease expired, rebound or conflicting", binding)
 
+    def test_release_040_consistency_and_preflight_only_status(self):
+        def variable(content, name):
+            m = re.search(r"^" + re.escape(name) + r":=(\S+)$", content, re.M)
+            self.assertIsNotNone(m, name)
+            return m.group(1)
+        core = (ROOT / "parallax/Makefile").read_text()
+        luci = (ROOT / "luci-app-parallax/Makefile").read_text()
+        self.assertEqual(variable(core, "PKG_VERSION"), "0.4.0")
+        self.assertEqual(variable(luci, "PKG_VERSION"), "0.4.0")
+        self.assertEqual(variable(core, "PKG_RELEASE"), "1")
+        self.assertEqual(variable(luci, "PKG_RELEASE"), "1")
+        self.assertEqual(variable(luci, "PKG_PO_VERSION"), "0.4.0-r1")
+        self.assertEqual((BASE / "version").read_text().strip(), "0.4.0")
+        self.assertIn("VERSION='0.4.0'", (ROOT / "parallax/files/usr/bin/parallax").read_text())
+        daemon = (BASE / "daemon.uc").read_text()
+        self.assertIn("const VERSION = '0.4.0';", daemon)
+        self.assertIn("phase: 'mvp-c2a-0'", daemon)
+        for field in ("interception_supported: false", "interception_ready: false",
+                      "interception_active: false", "net_enable_available: false",
+                      "network_preflight_only: true", "routing_active: false"):
+            self.assertIn(field, daemon)
+        smoke = (ROOT / "scripts/ci/qemu-smoke.sh").read_text()
+        workflow = (ROOT / ".github/workflows/build-test.yml").read_text()
+        self.assertIn("name-0.4.0-r1.apk", smoke)
+        self.assertIn("0.4.0-r1.apk", workflow)
+
     def test_artifact_gate_and_fixture_scenarios(self):
         smoke = (ROOT / "scripts/ci/qemu-smoke.sh").read_text()
         workflow = (ROOT / ".github/workflows/build-test.yml").read_text()

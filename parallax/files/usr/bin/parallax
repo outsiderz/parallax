@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Private config-only CLI for MVP (b); no shell-sourced user inputs.
 
-VERSION='0.3.1'
+VERSION='0.4.0'
 
 usage() {
     cat <<'USAGE'
@@ -23,7 +23,7 @@ Usage: parallax <command>
   purge --confirm-delete-all   Stop services and delete all Parallax user data
   help        Show this help
 
-MVP-c1: render/validate/apply/rollback remain CONFIG ONLY.
+MVP-c2a-0: render/validate/apply/rollback remain CONFIG ONLY.
 The separate singbox command starts an inbound-free process manually.
 It never changes firewall, routing, TProxy, TUN or DNS.
 To enable the status daemon: uci set parallax.main.enabled=1;
@@ -64,7 +64,7 @@ make_candidate() {
 
 case "${1:-help}" in
     version)
-        printf 'Parallax %s (MVP-c1: manual sing-box lifecycle)\n' "$VERSION"
+        printf 'Parallax %s (MVP-c2a-0: read-only preflight, no interception)\n' "$VERSION"
         ;;
     check)
         # shellcheck disable=SC1091

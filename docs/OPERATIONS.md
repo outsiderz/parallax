@@ -110,9 +110,9 @@ parallax singbox status
 
 After exhaustion, the read-only `parallax status` reports `phase: mvp-c1` and `singbox: { running: false, pid: null, user: "parallax-sb" }`. It shows that **the isolated process is stopped**; these fields do not independently prove why it stopped, so consult `logread` and the procd service state before manually starting it again. An administrator must diagnose the crash before issuing `parallax singbox start`; this is not an automatic recovery promise. Neither status, respawn nor startup is allowed to change routing, nftables, DNS or the stock sing-box service.
 
-## MVP-c1: release 0.3.1 version matrix
+## MVP-c2a-0: release 0.4.0 version matrix
 
-All three packages must share the exact release `0.3.1-r1`: `parallax`, `luci-app-parallax`, and the generated `luci-i18n-parallax-ru` package (built by `luci.mk` from the LuCI translation `po/ru/parallax.po`). The QEMU build checks the resulting three APK filenames and emits `package-version-consistency.log`; host tests also compare Makefile versions with the CLI, daemon and installed version file.
+All three packages must share the exact release `0.4.0-r1`: `parallax`, `luci-app-parallax`, and the generated `luci-i18n-parallax-ru` package (built by `luci.mk` from the LuCI translation `po/ru/parallax.po`). The QEMU build checks the resulting three APK filenames and emits `package-version-consistency.log`; host tests also compare Makefile versions with the CLI, daemon and installed version file.
 
 
 ## MVP-c2a-0 — strictly offline schema migration and diagnostic preflight
@@ -161,3 +161,7 @@ reject unverified neighbours. Passing MVP-c2a-0 does not authorize net enable.
 ### (в2a-0) QEMU: live neighbour proof (netns)
 
 The disposable OpenWrt QEMU guest installs `ip-full` and `kmod-veth` for a **test-only** veth pair. A selected client is placed in an isolated Linux network namespace with an explicit unicast MAC and IPv4. A real ICMP exchange creates a kernel REACHABLE neighbour on the exact ingress interface; the unmodified production `parallax net preflight` must accept this evidence. A subsequent explicit QEMU-only `ip neigh replace ... nud stale` transitions that real kernel neighbour to STALE; the very same preflight must reject it. This is not a text-mocked parser test. Afterward, veth and netns are deleted, and the QEMU gate compares raw/normalized network snapshots and UCI with the pre-test baseline, requiring empty diffs. The test topology necessarily changes kernel state **temporarily inside disposable QEMU**; the production preflight never performs those writes.
+
+### Состояние статуса MVP-c2a-0 (релиз 0.4.0)
+
+Фаза `mvp-c2a-0` означает **только чтение**: `parallax net preflight` проверяет конфигурацию и реальных соседей, но не запускает TProxy или изменение policy routing. `status` возвращает `interception_supported=false`, `interception_ready=false`, `interception_active=false`, `net_enable_available=false`, `network_preflight_only=true`. `singbox.running` описывает только отдельный процесс без слушателей и не означает готовности перехвата. В тестовом QEMU временные интерфейсы veth/netns удаляются полностью до сетевого сравнения baseline.

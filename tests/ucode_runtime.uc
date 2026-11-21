@@ -17,14 +17,17 @@ if (!conn)
     die('FAIL: ubus.connect()\n');
 
 const s = conn.call('parallax', 'status', {});
-if (!s || s.name != 'parallax' || s.phase != 'mvp-c1' ||
-    s.version != '0.3.1' || s.daemon_running != true || s.routing_active != false ||
-    s.proxy_running != false || !s.singbox ||
+if (!s || s.name != 'parallax' || s.phase != 'mvp-c2a-0' ||
+    s.version != '0.4.0' || s.daemon_running != true || s.routing_active != false ||
+    s.proxy_running != false ||
+    s.interception_supported != false || s.interception_ready != false ||
+    s.interception_active != false || s.net_enable_available != false ||
+    s.network_preflight_only != true || !s.singbox ||
     s.singbox.running != false || s.singbox.pid != null || s.singbox.user != 'parallax-sb' || s.config_enabled != true)
     die('FAIL: invalid ubus status\n');
 
 const p = conn.call('parallax', 'ping', {});
-if (!p || p.ok != true || p.name != 'parallax')
+if (!p || p.ok != true || p.name != 'parallax' || p.phase != 'mvp-c2a-0')
     die('FAIL: ubus ping\n');
 
 printf('PASS: real ucode + uloop + uci + ubus status and ping; heartbeat=%d\n', s.heartbeat_seq);

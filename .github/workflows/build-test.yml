@@ -127,11 +127,11 @@ jobs:
           (cd "$ARTIFACT_DIR" && sha256sum *.apk && ls -lh *.apk) \
             | tee "$REPORT_DIR/produced-apks.txt"
           for pkg in parallax luci-app-parallax luci-i18n-parallax-ru; do
-            test -s "$ARTIFACT_DIR/${pkg}-0.3.1-r1.apk" || {
-              echo "FAIL: missing or empty 0.3.1-r1 package for $pkg"
+            test -s "$ARTIFACT_DIR/${pkg}-0.4.0-r1.apk" || {
+              echo "FAIL: missing or empty 0.4.0-r1 package for $pkg"
               exit 1
             }
-            echo "PASS: matched release 0.3.1-r1 for $pkg"
+            echo "PASS: matched release 0.4.0-r1 for $pkg"
           done | tee "$REPORT_DIR/package-version-consistency.log"
 
       - name: Expand combined-efi image and run real QEMU KVM smoke
@@ -164,7 +164,7 @@ jobs:
           grep -Fq 'PASS: native sing-box still stopped/disabled with original configs after all MVP-c1 subtests' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: kill -9 recovered' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: repeated kill -9 exhausted bounded procd respawn; instance remains stopped' "$REPORT_DIR/qemu/mvp-c1-gate.log"
-          grep -Fq 'PASS: read-only status phase=mvp-c1 singbox running/pid/user' "$REPORT_DIR/qemu/mvp-c1-gate.log"
+          grep -Fq 'PASS: read-only status phase=mvp-c2a-0 singbox running/pid/user' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: status reports separate instance stopped after respawn limit' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: invalid active config falls back' "$REPORT_DIR/qemu/mvp-c1-gate.log"
           grep -Fq 'PASS: apk del leaves no parallax-singbox' "$REPORT_DIR/qemu/mvp-c1-remove.log"
@@ -179,7 +179,14 @@ jobs:
             test -f "$REPORT_DIR/qemu/mvp-c2a0-$invariant-diff.txt"
             test ! -s "$REPORT_DIR/qemu/mvp-c2a0-$invariant-diff.txt"
           done
-          test -f "$REPORT_DIR/qemu/mvp-c2a0-netns-cleanup.txt"
+          grep -Fq 'PASS: status phase=mvp-c2a-0 and interception_ready=false, preflight-only' "$REPORT_DIR/qemu/mvp-c2a0-gate.log"
+          grep -Fq 'REAL NETNS NEIGHBOUR REACHABLE:' "$REPORT_DIR/qemu/mvp-c2a0-gate.log"
+          grep -Fq 'REAL NETNS NEIGHBOUR STALE:' "$REPORT_DIR/qemu/mvp-c2a0-gate.log"
+          test -s "$REPORT_DIR/qemu/mvp-c2a0-real-reachable.log"
+          test -s "$REPORT_DIR/qemu/mvp-c2a0-real-stale.log"
+          grep -Fq 'PASS: MVP-c2a-0 read-only preflight' "$REPORT_DIR/qemu/mvp-c2a0-real-reachable.log"
+          grep -Fq 'neighbour is stale, conflicting or wrong MAC' "$REPORT_DIR/qemu/mvp-c2a0-real-stale.log"
+                    test -f "$REPORT_DIR/qemu/mvp-c2a0-netns-cleanup.txt"
           test ! -s "$REPORT_DIR/qemu/mvp-c2a0-netns-cleanup.txt"
           test -f "$REPORT_DIR/qemu/mvp-c2a0-uci-diff.txt"
           test ! -s "$REPORT_DIR/qemu/mvp-c2a0-uci-diff.txt"
