@@ -27,6 +27,10 @@ class C2A0Contract(unittest.TestCase):
         self.assertNotIn("ping ", preflight)
         self.assertNotIn("ip neigh add", preflight)
         self.assertNotIn("ip neigh replace", preflight)
+        self.assertIn('route show table all', preflight)
+        self.assertIn('table[[:space:]]+20263', preflight)
+        self.assertNotIn('route show table 20263', preflight)
+
         self.assertNotIn("printenv", preflight)
         guest = (ROOT / "tests/mvp_c2a0_guest.sh").read_text()
         self.assertNotIn("printenv", guest)
