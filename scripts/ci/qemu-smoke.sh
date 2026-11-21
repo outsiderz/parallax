@@ -413,6 +413,25 @@ diff -ruN "$REPORT/c2a0-before/config" "$REPORT/c2a0-after/config" > "$REPORT/mv
 }
 echo 'PASS: MVP-c2a-0 offline UCI migration and read-only preflight; zero network and final UCI diff' |
   tee "$REPORT/mvp-c2a0-PASS.txt"
+# MVP-c2a-1: isolated TProxy socket and genuine DHCP lease proof, QEMU only.
+# Host static linking keeps the disposable OpenWrt guest free of compiler packages.
+gcc -static -O2 -Wall -Wextra "$GITHUB_WORKSPACE/tests/mvp_c2a1_socket_probe.c" -o "$WORK/parallax-c2a1-socket-probe"
+send "$WORK/parallax-c2a1-socket-probe" /tmp/parallax-c2a1-socket-probe
+guest 'apk add libcap-bin shadow-su dnsmasq' | tee "$REPORT/mvp-c2a1-dependencies.log"
+snap c2a1-before
+send "$GITHUB_WORKSPACE/tests/mvp_c2a1_guest.sh" /tmp/parallax-mvp-c2a1-guest.sh
+guest 'sh /tmp/parallax-mvp-c2a1-guest.sh' 2>&1 | tee "$REPORT/mvp-c2a1-gate.log"
+snap c2a1-after
+for invariant in nft-static routes-v4 rules-v4 routes-v6 rules-v6 resolv-conf resolv-auto; do
+  diff -u "$REPORT/c2a1-before/$invariant.txt" "$REPORT/c2a1-after/$invariant.txt" > "$REPORT/mvp-c2a1-$invariant-diff.txt" || {
+    echo "FAIL: MVP-c2a-1 changed $invariant"; exit 1;
+  }
+done
+diff -ruN "$REPORT/c2a1-before/config" "$REPORT/c2a1-after/config" >"$REPORT/mvp-c2a1-uci-diff.txt" || {
+  echo 'FAIL: MVP-c2a-1 changed UCI'; exit 1;
+}
+echo 'PASS: MVP-c2a-1 QEMU isolated TProxy/DHCP evidence and empty network/UCI diffs' |
+  tee "$REPORT/mvp-c2a1-PASS.txt"
 snap after-install
 guest 'set -eu
 /etc/init.d/parallax stop

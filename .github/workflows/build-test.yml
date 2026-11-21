@@ -195,6 +195,21 @@ jobs:
           done
           echo 'PASS: MVP-c2a-0 dedicated QEMU gate: migration, negative binding, management, zero network writes'
 
+      - name: MVP-c2a-1 isolated TProxy and real dnsmasq QEMU proof
+        run: |
+          set -euo pipefail
+          test -s "$REPORT_DIR/qemu/mvp-c2a1-PASS.txt"
+          for required in 'TCP setsockopt+getsockopt IP_TRANSPARENT=1' 'UDP setsockopt+getsockopt IP_TRANSPARENT=1' 'CAP_NET_RAW only' 'REAL dnsmasq DHCP ACK' 'no-capability transparent socket refused'; do
+            grep -Fq "$required" "$REPORT_DIR/qemu/mvp-c2a1-gate.log"
+          done
+          grep -Fq 'KERNEL:' "$REPORT_DIR/qemu/mvp-c2a1-gate.log"
+          grep -Fq 'SING-BOX:' "$REPORT_DIR/qemu/mvp-c2a1-gate.log"
+          for invariant in nft-static routes-v4 rules-v4 routes-v6 rules-v6 resolv-conf resolv-auto uci; do
+            test -f "$REPORT_DIR/qemu/mvp-c2a1-$invariant-diff.txt"
+            test ! -s "$REPORT_DIR/qemu/mvp-c2a1-$invariant-diff.txt"
+          done
+          echo 'PASS: dedicated QEMU-only c2a-1 proof; zero persistent network diffs'
+
       - name: Upload built APKs
         if: always()
         uses: actions/upload-artifact@v4
