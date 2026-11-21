@@ -41,6 +41,13 @@ class C2A0Contract(unittest.TestCase):
         self.assertNotIn("ip route add", migration)
         self.assertNotIn("conntrack -D", migration)
 
+    def test_v2_v3_platform_contract_has_no_version_mismatch(self):
+        platform = (BASE / "platform.sh").read_text()
+        self.assertIn('if [ "$schema" != \'2\' ] && [ "$schema" != \'3\' ]; then', platform)
+        self.assertIn("expected 2 or 3", platform)
+        self.assertIn("selected_print.uc validate", platform)
+        self.assertNotIn("schema_version (expected 2)'", platform)
+
     def test_shared_strict_validation_and_bindings(self):
         module = (BASE / "selected_clients.uc").read_text()
         helper = (BASE / "selected_print.uc").read_text()
