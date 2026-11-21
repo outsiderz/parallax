@@ -27,7 +27,7 @@ IFS="$old_ifs"
 
 # Do not invent or trust an HTTP-derived management peer.
 # Dropbear sets SSH_CONNECTION for an SSH session; BusyBox OpenWrt has no
-# standalone printenv. Refuse when invoked outside an identifiable session.
+# external environment-dump utility. Refuse without an identifiable session.
 [ -n "${SSH_CONNECTION:-}" ] || fail 'trusted SSH management peer unavailable'
 mgmt="${SSH_CONNECTION%% *}"
 case "$mgmt" in *:*) fail 'IPv6 management path unsupported by IPv4-only gate' ;; esac
