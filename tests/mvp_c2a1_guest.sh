@@ -6,6 +6,7 @@ umask 077
 D=/tmp/parallax-c2a1
 # File capabilities cannot be gained from nosuid tmpfs; use guest overlay.
 NS=px-c2a1
+SERVER_NS=px-c2a1srv
 HOST=pxc2a1h
 CLIENT=pxc2a1c
 MAC=02:51:2a:01:00:02
@@ -21,8 +22,8 @@ cleanup() {
     [ -z "$sb_pid" ] || { kill "$sb_pid" 2>/dev/null || :; wait "$sb_pid" 2>/dev/null || :; }
     [ -z "${launcher:-}" ] || { kill "$launcher" 2>/dev/null || :; wait "$launcher" 2>/dev/null || :; }
     [ -z "$dns_pid" ] || { kill "$dns_pid" 2>/dev/null || :; wait "$dns_pid" 2>/dev/null || :; }
-    ip link del "$HOST" 2>/dev/null || :
     ip netns del "$NS" 2>/dev/null || :
+    ip netns del "$SERVER_NS" 2>/dev/null || :
 }
 trap cleanup EXIT HUP INT TERM
 echo "KERNEL: $(uname -srvm)"
@@ -91,16 +92,20 @@ test "$(printf '%d' "0x$eff")" -eq 8192 || {
 }
 echo "PASS: sing-box TProxy TCP+UDP sockets 127.0.0.2:39091, uid=$uid CapEff=$eff (CAP_NET_RAW only)"
 # No redirection, nft rules, ip rule, routes, conntrack or DNS changes.
-# A separate dnsmasq instance lives only on this disposable veth.
+# A separate dnsmasq instance and DHCP client live in TWO disposable netns.
+# Both veth ends are outside the root namespace: fw4 never sees DHCP traffic.
 ip netns add "$NS"
+ip netns add "$SERVER_NS"
 ip link add "$HOST" type veth peer name "$CLIENT"
+ip link set "$HOST" netns "$SERVER_NS"
 ip link set "$CLIENT" netns "$NS"
-ip addr add 198.19.90.1/24 dev "$HOST"
-ip link set "$HOST" up
+ip netns exec "$SERVER_NS" ip link set lo up
+ip netns exec "$SERVER_NS" ip addr add 198.19.90.1/24 dev "$HOST"
+ip netns exec "$SERVER_NS" ip link set "$HOST" up
 ip netns exec "$NS" ip link set lo up
 ip netns exec "$NS" ip link set "$CLIENT" address "$MAC"
 ip netns exec "$NS" ip link set "$CLIENT" up
-dnsmasq --no-daemon --conf-file=/dev/null --no-hosts --no-resolv --port=0 \
+ip netns exec "$SERVER_NS" dnsmasq --no-daemon --conf-file=/dev/null --no-hosts --no-resolv --port=0 \
     --interface="$HOST" --bind-interfaces --dhcp-authoritative \
     --dhcp-range=198.19.90.10,198.19.90.20,255.255.255.0,1h \
     --dhcp-leasefile="$D/leases" --pid-file="$D/dnsmasq.pid" \
@@ -117,8 +122,8 @@ leaseip="$(awk -v mac="$MAC" 'tolower($2)==mac {print $3}' "$D/leases")"
 test -n "$leaseip"
 test "$(printf '%s\n' "$leaseip" | wc -l)" -eq 1
 ip netns exec "$NS" ip addr add "$leaseip/24" dev "$CLIENT"
-ping -c 1 -W 2 -I "$HOST" "$leaseip" >/dev/null
-neigh="$(ip -4 neigh show to "$leaseip" dev "$HOST")"
+ip netns exec "$SERVER_NS" ping -c 1 -W 2 -I "$HOST" "$leaseip" >/dev/null
+neigh="$(ip netns exec "$SERVER_NS" ip -4 neigh show to "$leaseip" dev "$HOST")"
 . /usr/share/parallax/binding_evidence.sh
 parallax_binding_evidence "$MAC" "$leaseip" local_lease "$neigh" "$D/leases" "$(date +%s)"
 echo "PASS: REAL dnsmasq DHCP ACK, active lease $MAC/$leaseip, REACHABLE neighbour, local_lease parser"
